@@ -5,6 +5,7 @@ from dash import dcc, html, Input, Output
 import plotly.graph_objects as go
 import numpy as np
 import matplotlib.pyplot as plt
+import copy
 
 def generate_realistic_age():
     """
@@ -288,8 +289,8 @@ def run_large_simulation(years=100, net_migration_rate=0.01):
         pop.simulate_year(net_migration_rate)
         stats.append(pop.get_population_statistics())
         print("year "+str(year))
-        population_data[year] = {"population": pop.population}
-
+        population_data[year] = {"population": copy.deepcopy(pop.population)}
+        
  #   plot_age_sex_pyramid(pop.population)
 
     return stats
