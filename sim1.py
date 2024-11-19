@@ -7,30 +7,66 @@ import numpy as np
 import matplotlib.pyplot as plt
 import copy
 
-def generate_realistic_age():
+def generate_realistic_age(sex):
     """
     Generate a random age based on a realistic age distribution.
     """
     # Define age groups (0 to 100)
     age_groups = list(range(101))
 
-    # Adjusted weights based on a realistic demographic profile
-    weights = [
-        0.06, 0.06, 0.06, 0.06, 0.06, 0.06, 0.06, 0.06, 0.06, 0.06,  # 0-9
-        0.05, 0.05, 0.05, 0.05, 0.05, 0.04, 0.04, 0.04, 0.04, 0.04,  # 10-19
-        0.035, 0.035, 0.035, 0.035, 0.035, 0.035, 0.035, 0.035, 0.035, 0.035,  # 20-29
-        0.03, 0.03, 0.03, 0.03, 0.03, 0.03, 0.03, 0.03, 0.03, 0.03,  # 30-39
-        0.025, 0.025, 0.025, 0.025, 0.025, 0.025, 0.025, 0.025, 0.025, 0.025,  # 40-49
-        0.02, 0.02, 0.02, 0.02, 0.02, 0.02, 0.02, 0.02, 0.02, 0.02,  # 50-59
-        0.015, 0.015, 0.015, 0.015, 0.015, 0.015, 0.015, 0.015, 0.015, 0.015,  # 60-69
-        0.01, 0.01, 0.01, 0.01, 0.01, 0.01, 0.01, 0.01, 0.01, 0.01,  # 70-79
-        0.005, 0.005, 0.005, 0.005, 0.005, 0.005, 0.005, 0.005, 0.005, 0.005,  # 80-89
-        0.002, 0.002, 0.002, 0.002, 0.002, 0.002, 0.002, 0.002, 0.002, 0.002,  # 90-99
-        0.001  # 100
+    weights_males = [
+        0.021, 0.021, 0.021, 0.021, 0.021,
+        0.025, 0.025, 0.025, 0.025, 0.025,
+        0.029, 0.029, 0.029, 0.029, 0.029,
+        0.029, 0.029, 0.029, 0.029, 0.029,
+        0.028, 0.028, 0.028, 0.028, 0.028,
+        0.030, 0.030, 0.030, 0.030, 0.030,
+        0.034, 0.034, 0.034, 0.034, 0.034,
+        0.033, 0.033, 0.033, 0.033, 0.033,
+        0.034, 0.034, 0.034, 0.034, 0.034,
+        0.032, 0.032, 0.032, 0.032, 0.032,
+        0.029, 0.029, 0.029, 0.029, 0.029,
+        0.032, 0.032, 0.032, 0.032, 0.032,
+        0.032, 0.032, 0.032, 0.032, 0.032,
+        0.030, 0.030, 0.030, 0.030, 0.030,
+        0.028, 0.028, 0.028, 0.028, 0.028,
+        0.025, 0.025, 0.025, 0.025, 0.025,
+        0.013, 0.013, 0.013, 0.013, 0.013,
+        0.007, 0.007, 0.007, 0.007, 0.007,
+        0.002, 0.002, 0.002, 0.002, 0.002,
+        0.000, 0.000, 0.000, 0.000, 0.000,
+        0.000
+    ]
+
+    weights_females = [
+        0.020, 0.020, 0.020, 0.020, 0.020, 
+        0.024, 0.024, 0.024, 0.024, 0.024, 
+        0.028, 0.028, 0.028, 0.028, 0.028, 
+        0.028, 0.028, 0.028, 0.028, 0.028, 
+        0.027, 0.027, 0.027, 0.027, 0.027, 
+        0.029, 0.029, 0.029, 0.029, 0.029, 
+        0.032, 0.032, 0.032, 0.032, 0.032, 
+        0.031, 0.031, 0.031, 0.031, 0.031, 
+        0.032, 0.032, 0.032, 0.032, 0.032, 
+        0.030, 0.030, 0.030, 0.030, 0.030, 
+        0.028, 0.028, 0.028, 0.028, 0.028, 
+        0.032, 0.032, 0.032, 0.032, 0.032, 
+        0.033, 0.033, 0.033, 0.033, 0.033, 
+        0.032, 0.032, 0.032, 0.032, 0.032, 
+        0.032, 0.032, 0.032, 0.032, 0.032, 
+        0.030, 0.030, 0.030, 0.030, 0.030, 
+        0.018, 0.018, 0.018, 0.018, 0.018, 
+        0.012, 0.012, 0.012, 0.012, 0.012, 
+        0.006, 0.006, 0.006, 0.006, 0.006, 
+        0.002, 0.002, 0.002, 0.002, 0.002, 
+        0.000
     ]
 
     # Normalize weights
-    weights = np.array(weights)
+    if sex == 'male':
+        weights = np.array(weights_males)
+    else:
+        weights = np.array(weights_females)
     weights /= weights.sum()
 
     # Randomly sample an age
@@ -159,11 +195,11 @@ def plot_age_sex_pyramid(population):
     plt.show()
 
 class Individual:
-    def __init__(self, id, is_immigrant, age=0, fertility_prob=0.1, max_age=100, sex=None, death_chance=0.0114):
+    def __init__(self, id, is_immigrant, sex='male', age=0, fertility_prob=0.1, max_age=100, death_chance=0.0114):
         self.id = id
         self.is_immigrant = is_immigrant
         self.age = age
-        self.sex = sex if sex else random.choice(['male', 'female'])  # Randomly assign sex if not provided
+        self.sex = sex #if sex else random.choice(['male', 'female'])  # Randomly assign sex if not provided
         self.partner = None
         self.fertility_prob = fertility_prob
         self.max_age = max_age
@@ -211,17 +247,19 @@ class Population:
 
         # Create initial population with realistic ages
         for _ in range(initial_native_count):
-            age = generate_realistic_age()
+            sex = random.choice(['male', 'female'])
+            age = generate_realistic_age(sex)
             self.population.append(Individual(
-                self.next_id, is_immigrant=False, age=age,
+                self.next_id, is_immigrant=False, sex=sex, age=age,
                 fertility_prob=native_fertility, max_age=max_age
             ))
             self.next_id += 1
         
         for _ in range(initial_immigrant_count):
-            age = generate_realistic_age()
+            sex = random.choice(['male', 'female'])
+            age = generate_realistic_age(sex)
             self.population.append(Individual(
-                self.next_id, is_immigrant=True, age=age,
+                self.next_id, is_immigrant=True, sex=sex, age=age,
                 fertility_prob=immigrant_fertility, max_age=max_age
             ))
             self.next_id += 1
