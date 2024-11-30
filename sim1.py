@@ -1,10 +1,9 @@
 import random
-import matplotlib.pyplot as plt
+import numpy as np
+import copy
 import dash
 from dash import dcc, html, Input, Output
 import plotly.graph_objects as go
-import numpy as np
-import copy
 
 def generate_realistic_age(sex):
     """
@@ -38,26 +37,26 @@ def generate_realistic_age(sex):
     ]
 
     weights_females = [
-        0.020, 0.020, 0.020, 0.020, 0.020, 
-        0.024, 0.024, 0.024, 0.024, 0.024, 
-        0.028, 0.028, 0.028, 0.028, 0.028, 
-        0.028, 0.028, 0.028, 0.028, 0.028, 
-        0.027, 0.027, 0.027, 0.027, 0.027, 
-        0.029, 0.029, 0.029, 0.029, 0.029, 
-        0.032, 0.032, 0.032, 0.032, 0.032, 
-        0.031, 0.031, 0.031, 0.031, 0.031, 
-        0.032, 0.032, 0.032, 0.032, 0.032, 
-        0.030, 0.030, 0.030, 0.030, 0.030, 
-        0.028, 0.028, 0.028, 0.028, 0.028, 
-        0.032, 0.032, 0.032, 0.032, 0.032, 
-        0.033, 0.033, 0.033, 0.033, 0.033, 
-        0.032, 0.032, 0.032, 0.032, 0.032, 
-        0.032, 0.032, 0.032, 0.032, 0.032, 
-        0.030, 0.030, 0.030, 0.030, 0.030, 
-        0.018, 0.018, 0.018, 0.018, 0.018, 
-        0.012, 0.012, 0.012, 0.012, 0.012, 
-        0.006, 0.006, 0.006, 0.006, 0.006, 
-        0.002, 0.002, 0.002, 0.002, 0.002, 
+        0.020, 0.020, 0.020, 0.020, 0.020,
+        0.024, 0.024, 0.024, 0.024, 0.024,
+        0.028, 0.028, 0.028, 0.028, 0.028,
+        0.028, 0.028, 0.028, 0.028, 0.028,
+        0.027, 0.027, 0.027, 0.027, 0.027,
+        0.029, 0.029, 0.029, 0.029, 0.029,
+        0.032, 0.032, 0.032, 0.032, 0.032,
+        0.031, 0.031, 0.031, 0.031, 0.031,
+        0.032, 0.032, 0.032, 0.032, 0.032,
+        0.030, 0.030, 0.030, 0.030, 0.030,
+        0.028, 0.028, 0.028, 0.028, 0.028,
+        0.032, 0.032, 0.032, 0.032, 0.032,
+        0.033, 0.033, 0.033, 0.033, 0.033,
+        0.032, 0.032, 0.032, 0.032, 0.032,
+        0.032, 0.032, 0.032, 0.032, 0.032,
+        0.030, 0.030, 0.030, 0.030, 0.030,
+        0.018, 0.018, 0.018, 0.018, 0.018,
+        0.012, 0.012, 0.012, 0.012, 0.012,
+        0.006, 0.006, 0.006, 0.006, 0.006,
+        0.002, 0.002, 0.002, 0.002, 0.002,
         0.000
     ]
 
@@ -307,40 +306,18 @@ def run_large_simulation(years=100, net_migration=56.0):
     
     return stats
 
-# Run the simulation
+# Run the simulation once
 stats = run_large_simulation()
 
 # Compute the maximum population count for x-axis scaling
 max_count = get_max_population_count(population_data)
 
-# Plotting total, native, and immigrant populations
+# Prepare data for plotting
 years = list(range(len(stats)))
 total_population = [stat['total_population'] for stat in stats]
 native_population = [stat['native_population'] for stat in stats]
 immigrant_population = [stat['immigrant_population'] for stat in stats]
 immigrant_percentage = [stat['immigrant_percentage'] for stat in stats]
-
-# Plot total, native, and immigrant populations
-plt.figure(figsize=(12, 6))
-plt.plot(years, total_population, label="Total Population", linewidth=2)
-plt.plot(years, native_population, label="Native Population", linestyle='--')
-plt.plot(years, immigrant_population, label="Immigrant Population", linestyle=':')
-plt.title("Population Dynamics Over Time (Random Ages)")
-plt.xlabel("Year")
-plt.ylabel("Population")
-plt.legend()
-plt.grid()
-plt.show()
-
-# Plot immigrant percentage over time
-plt.figure(figsize=(12, 6))
-plt.plot(years, immigrant_percentage, label="Immigrant Percentage", color='orange', linewidth=2)
-plt.title("Immigrant Percentage Over Time (Random Ages)")
-plt.xlabel("Year")
-plt.ylabel("Immigrant Percentage (%)")
-plt.legend()
-plt.grid()
-plt.show()
 
 # Dash app initialization
 app = dash.Dash(__name__)
@@ -351,15 +328,23 @@ app.layout = html.Div([
         dcc.Graph(
             id="population-trend",
             config={"displayModeBar": False}
+        ),
+        dcc.Graph(
+            id="population-breakdown",
+            config={"displayModeBar": False}
+        ),
+        dcc.Graph(
+            id="immigrant-percentage",
+            config={"displayModeBar": False}
         )
-    ], style={"width": "48%", "display": "inline-block"}),
+    ], style={"width": "48%", "display": "inline-block", "vertical-align": "top"}),
 
     html.Div([
         dcc.Graph(
             id="age-sex-pyramid",
             config={"displayModeBar": False}
         )
-    ], style={"width": "48%", "display": "inline-block"})
+    ], style={"width": "48%", "display": "inline-block", "vertical-align": "top"})
 ])
 
 # Callback for total population trend graph
@@ -369,9 +354,6 @@ app.layout = html.Div([
 )
 def create_population_trend(_):
     # Total population trend
-    years = list(population_data.keys())
-    total_population = [len(data["population"]) for data in population_data.values()]
-
     fig = go.Figure()
     fig.add_trace(go.Scatter(
         x=years,
@@ -385,6 +367,61 @@ def create_population_trend(_):
         title="Total Population Over Time",
         xaxis=dict(title="Year"),
         yaxis=dict(title="Total Population"),
+        hovermode="x unified"
+    )
+
+    return fig
+
+# Callback for population breakdown graph
+@app.callback(
+    Output("population-breakdown", "figure"),
+    Input("population-breakdown", "hoverData")
+)
+def create_population_breakdown(_):
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(
+        x=years,
+        y=native_population,
+        mode="lines",
+        name="Native Population",
+        line=dict(dash='dash', color='blue')
+    ))
+    fig.add_trace(go.Scatter(
+        x=years,
+        y=immigrant_population,
+        mode="lines",
+        name="Immigrant Population",
+        line=dict(dash='dot', color='red')
+    ))
+
+    fig.update_layout(
+        title="Native vs. Immigrant Population Over Time",
+        xaxis=dict(title="Year"),
+        yaxis=dict(title="Population"),
+        hovermode="x unified"
+    )
+
+    return fig
+
+# Callback for immigrant percentage graph
+@app.callback(
+    Output("immigrant-percentage", "figure"),
+    Input("immigrant-percentage", "hoverData")
+)
+def create_immigrant_percentage(_):
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(
+        x=years,
+        y=immigrant_percentage,
+        mode="lines",
+        name="Immigrant Percentage",
+        line=dict(color='orange')
+    ))
+
+    fig.update_layout(
+        title="Immigrant Percentage Over Time",
+        xaxis=dict(title="Year"),
+        yaxis=dict(title="Percentage (%)"),
         hovermode="x unified"
     )
 
