@@ -143,6 +143,12 @@ def get_death_chance(age):
     p = probability[age] * 0.001
     return p
 
+# Precompute immigrant age probabilities
+ages_for_immigrants = np.arange(0, 100)
+sigma = 10.220
+immigrant_age_probabilities = np.exp(-((ages_for_immigrants - 25)**2) / (2 * sigma**2))
+immigrant_age_probabilities /= immigrant_age_probabilities.sum()
+
 class Individual:
     def __init__(self, id, is_immigrant, sex='male', age=0, fertility_prob=0.1, max_age=100, death_chance=0.0114):
         self.id = id
@@ -235,12 +241,13 @@ class Population:
 
         # Add net migration
         for _ in range(int(net_migration)):
-            age = np.random.randint(0, max_age)
+            age = np.random.choice(ages_for_immigrants, p=immigrant_age_probabilities)
             new_population.append(Individual(
                 self.next_id, is_immigrant=True, age=age,
                 sex=np.random.choice(['male', 'female']), fertility_prob=0.017
             ))
             self.next_id += 1
+
 
         self.population = new_population
 
