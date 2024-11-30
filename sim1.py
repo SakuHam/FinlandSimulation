@@ -173,7 +173,7 @@ class Individual:
 
     @property
     def is_immigrant(self):
-        return self.get_gene_value('immigrant_status')
+        return self.get_gene_value('immigrant_status') >= 0.5
 
     def age_one_year(self):
         """Age the individual by one year and check for death."""
@@ -187,7 +187,7 @@ class Individual:
         """Attempt to find a partner of the opposite sex."""
         if self.partner is not None or not (18 <= self.age <= 40):
             return  # Skip if already partnered or outside partnerable age range
-        
+
         potential_partners = [
             ind for ind in population
             if ind.partner is None
@@ -199,12 +199,15 @@ class Individual:
         if potential_partners:
             self.partner = np.random.choice(potential_partners)
             self.partner.partner = self
-    
+
     def have_offspring(self, next_id):
         """Attempt to have offspring, only for male-female couples."""
         if self.partner and self.sex == 'female' and np.random.random() < self.fertility_prob:
-            # Inherit genes from parents (for simplicity, from the mother)
-            genes = copy.deepcopy(self.genes)
+            # Inherit genes from both parents
+            mother_gene_value = self.get_gene_value('immigrant_status')
+            father_gene_value = self.partner.get_gene_value('immigrant_status')
+            offspring_gene_value = (mother_gene_value + father_gene_value) / 2
+            genes = [Gene('immigrant_status', offspring_gene_value)]
             return Individual(next_id, genes=genes, sex=np.random.choice(['male', 'female']), fertility_prob=self.fertility_prob)
         return None
 
@@ -221,7 +224,7 @@ class Population:
         for _ in range(initial_native_count):
             sex = np.random.choice(['male', 'female'])
             age = generate_realistic_age(sex)
-            genes = [Gene('immigrant_status', False)]
+            genes = [Gene('immigrant_status', 0.0)]  # Natives have 0.0
             self.population.append(Individual(
                 self.next_id, genes=genes, sex=sex, age=age,
                 fertility_prob=native_fertility, max_age=max_age
@@ -232,7 +235,7 @@ class Population:
         for _ in range(initial_immigrant_count):
             sex = np.random.choice(['male', 'female'])
             age = generate_realistic_age(sex)
-            genes = [Gene('immigrant_status', True)]
+            genes = [Gene('immigrant_status', 1.0)]  # Immigrants have 1.0
             self.population.append(Individual(
                 self.next_id, genes=genes, sex=sex, age=age,
                 fertility_prob=immigrant_fertility, max_age=max_age
@@ -262,7 +265,7 @@ class Population:
         # Add net migration
         for _ in range(int(net_migration)):
             age = np.random.choice(ages_for_immigrants, p=immigrant_age_probabilities)
-            genes = [Gene('immigrant_status', True)]
+            genes = [Gene('immigrant_status', 1.0)]  # New immigrants have 1.0
             new_population.append(Individual(
                 self.next_id, genes=genes, age=age,
                 sex=np.random.choice(['male', 'female']), fertility_prob=0.017
@@ -276,15 +279,17 @@ class Population:
         total = len(self.population)
         males = sum(1 for ind in self.population if ind.sex == 'male')
         females = total - males
-        natives = sum(1 for ind in self.population if not ind.is_immigrant)
-        immigrants = total - natives
+        natives = sum(1 for ind in self.population if ind.get_gene_value('immigrant_status') == 0.0)
+        immigrants = sum(1 for ind in self.population if ind.get_gene_value('immigrant_status') == 1.0)
+        mixed = total - natives - immigrants
         return {
             "total_population": total,
             "native_population": natives,
             "immigrant_population": immigrants,
+            "mixed_population": mixed,
             "male_population": males,
             "female_population": females,
-            "immigrant_percentage": (immigrants / total) * 100
+            "immigrant_percentage": ((immigrants + mixed) / total) * 100
         }
 
 population_data = {}
@@ -318,6 +323,7 @@ years = list(range(len(stats)))
 total_population = [stat['total_population'] for stat in stats]
 native_population = [stat['native_population'] for stat in stats]
 immigrant_population = [stat['immigrant_population'] for stat in stats]
+mixed_population = [stat['mixed_population'] for stat in stats]
 immigrant_percentage = [stat['immigrant_percentage'] for stat in stats]
 
 # Dash app initialization
@@ -336,6 +342,10 @@ app.layout = html.Div([
         ),
         dcc.Graph(
             id="immigrant-percentage",
+            config={"displayModeBar": False}
+        ),
+        dcc.Graph(
+            id="immigrant-gene-histogram",
             config={"displayModeBar": False}
         )
     ], style={"width": "48%", "display": "inline-block", "vertical-align": "top"}),
@@ -394,9 +404,16 @@ def create_population_breakdown(_):
         name="Immigrant Population",
         line=dict(dash='dot', color='red')
     ))
+    fig.add_trace(go.Scatter(
+        x=years,
+        y=mixed_population,
+        mode="lines",
+        name="Mixed Population",
+        line=dict(color='purple')
+    ))
 
     fig.update_layout(
-        title="Native vs. Immigrant Population Over Time",
+        title="Population Breakdown Over Time",
         xaxis=dict(title="Year"),
         yaxis=dict(title="Population"),
         hovermode="x unified"
@@ -420,7 +437,7 @@ def create_immigrant_percentage(_):
     ))
 
     fig.update_layout(
-        title="Immigrant Percentage Over Time",
+        title="Immigrant & Mixed Percentage Over Time",
         xaxis=dict(title="Year"),
         yaxis=dict(title="Percentage (%)"),
         hovermode="x unified"
@@ -487,6 +504,45 @@ def update_age_sex_pyramid(hoverData):
         yaxis=dict(title="Age Group", autorange="reversed"),
         barmode="relative",
         hovermode="y unified"
+    )
+
+    return fig
+
+# Callback for immigrant gene histogram
+@app.callback(
+    Output("immigrant-gene-histogram", "figure"),
+    Input("population-trend", "hoverData")
+)
+def update_immigrant_gene_histogram(hoverData):
+    # Determine the hovered year
+    if hoverData and "points" in hoverData:
+        year = hoverData["points"][0]["x"]
+    else:
+        year = 0  # Default to the first year if no hover data is available
+
+    population = population_data[year]["population"]
+    # Extract immigrant_status gene values
+    gene_values = [ind.get_gene_value('immigrant_status') for ind in population]
+
+    # Create histogram
+    bins = np.arange(0, 1.1, 0.1)  # Bins from 0 to 1 in steps of 0.1
+    hist, bin_edges = np.histogram(gene_values, bins=bins)
+
+    # Prepare data for bar chart
+    bin_centers = (bin_edges[:-1] + bin_edges[1:]) / 2
+    fig = go.Figure()
+    fig.add_trace(go.Bar(
+        x=bin_centers,
+        y=hist,
+        width=0.08,  # Adjust width to avoid bars touching
+        marker_color='purple'
+    ))
+
+    fig.update_layout(
+        title=f"Immigrant Gene Value Distribution for Year {year}",
+        xaxis=dict(title="Immigrant Gene Value"),
+        yaxis=dict(title="Number of Individuals"),
+        hovermode="x"
     )
 
     return fig
