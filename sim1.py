@@ -149,16 +149,31 @@ sigma = 10.220
 immigrant_age_probabilities = np.exp(-((ages_for_immigrants - 25)**2) / (2 * sigma**2))
 immigrant_age_probabilities /= immigrant_age_probabilities.sum()
 
+class Gene:
+    def __init__(self, name, value):
+        self.name = name
+        self.value = value
+
 class Individual:
-    def __init__(self, id, is_immigrant, sex='male', age=0, fertility_prob=0.1, max_age=100, death_chance=0.0114):
+    def __init__(self, id, genes, sex='male', age=0, fertility_prob=0.1, max_age=100, death_chance=0.0114):
         self.id = id
-        self.is_immigrant = is_immigrant
+        self.genes = genes
         self.age = age
         self.sex = sex
         self.partner = None
         self.fertility_prob = fertility_prob
         self.max_age = max_age
         self.death_chance = death_chance
+
+    def get_gene_value(self, gene_name):
+        for gene in self.genes:
+            if gene.name == gene_name:
+                return gene.value
+        return None
+
+    @property
+    def is_immigrant(self):
+        return self.get_gene_value('immigrant_status')
 
     def age_one_year(self):
         """Age the individual by one year and check for death."""
@@ -188,7 +203,9 @@ class Individual:
     def have_offspring(self, next_id):
         """Attempt to have offspring, only for male-female couples."""
         if self.partner and self.sex == 'female' and np.random.random() < self.fertility_prob:
-            return Individual(next_id, self.is_immigrant, sex=np.random.choice(['male', 'female']), fertility_prob=self.fertility_prob)
+            # Inherit genes from parents (for simplicity, from the mother)
+            genes = copy.deepcopy(self.genes)
+            return Individual(next_id, genes=genes, sex=np.random.choice(['male', 'female']), fertility_prob=self.fertility_prob)
         return None
 
 class Population:
@@ -200,21 +217,24 @@ class Population:
         initial_native_count = int(total_population * (1 - immigrant_ratio))
         initial_immigrant_count = total_population - initial_native_count
 
-        # Create initial population with realistic ages
+        # Create initial native population with realistic ages
         for _ in range(initial_native_count):
             sex = np.random.choice(['male', 'female'])
             age = generate_realistic_age(sex)
+            genes = [Gene('immigrant_status', False)]
             self.population.append(Individual(
-                self.next_id, is_immigrant=False, sex=sex, age=age,
+                self.next_id, genes=genes, sex=sex, age=age,
                 fertility_prob=native_fertility, max_age=max_age
             ))
             self.next_id += 1
-        
+
+        # Create initial immigrant population with realistic ages
         for _ in range(initial_immigrant_count):
             sex = np.random.choice(['male', 'female'])
             age = generate_realistic_age(sex)
+            genes = [Gene('immigrant_status', True)]
             self.population.append(Individual(
-                self.next_id, is_immigrant=True, sex=sex, age=age,
+                self.next_id, genes=genes, sex=sex, age=age,
                 fertility_prob=immigrant_fertility, max_age=max_age
             ))
             self.next_id += 1
@@ -242,12 +262,12 @@ class Population:
         # Add net migration
         for _ in range(int(net_migration)):
             age = np.random.choice(ages_for_immigrants, p=immigrant_age_probabilities)
+            genes = [Gene('immigrant_status', True)]
             new_population.append(Individual(
-                self.next_id, is_immigrant=True, age=age,
+                self.next_id, genes=genes, age=age,
                 sex=np.random.choice(['male', 'female']), fertility_prob=0.017
             ))
             self.next_id += 1
-
 
         self.population = new_population
 
