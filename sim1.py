@@ -4,7 +4,6 @@ import dash
 from dash import dcc, html, Input, Output
 import plotly.graph_objects as go
 import numpy as np
-import matplotlib.pyplot as plt
 import copy
 
 def generate_realistic_age(sex):
@@ -72,91 +71,48 @@ def generate_realistic_age(sex):
     # Randomly sample an age
     return np.random.choice(age_groups, p=weights)
 
-# Helper function to prepare age-sex pyramid data for a given year
 def prepare_age_sex_data(population):
+    """Prepare age-sex pyramid data, including natives and immigrants separately."""
     age_groups = list(range(0, 101, 5))
-    male_counts = [-sum(1 for ind in population if ind.sex == 'male' and age <= ind.age < age+5) for age in age_groups]
-    female_counts = [sum(1 for ind in population if ind.sex == 'female' and age <= ind.age < age+5) for age in age_groups]
-    return {"age_groups": age_groups, "male_counts": male_counts, "female_counts": female_counts}
+    native_male_counts = []
+    immigrant_male_counts = []
+    native_female_counts = []
+    immigrant_female_counts = []
+    
+    for age in age_groups:
+        native_male_counts.append(-sum(
+            1 for ind in population if not ind.is_immigrant and ind.sex == 'male' and age <= ind.age < age + 5))
+        immigrant_male_counts.append(-sum(
+            1 for ind in population if ind.is_immigrant and ind.sex == 'male' and age <= ind.age < age + 5))
+        native_female_counts.append(sum(
+            1 for ind in population if not ind.is_immigrant and ind.sex == 'female' and age <= ind.age < age + 5))
+        immigrant_female_counts.append(sum(
+            1 for ind in population if ind.is_immigrant and ind.sex == 'female' and age <= ind.age < age + 5))
+    
+    return {
+        "age_groups": age_groups,
+        "native_male_counts": native_male_counts,
+        "immigrant_male_counts": immigrant_male_counts,
+        "native_female_counts": native_female_counts,
+        "immigrant_female_counts": immigrant_female_counts
+    }
 
-    # Updated interactive plotting function
-def plot_interactive_population(population_data):
-    # Extract total population over time
-    years = list(population_data.keys())
-    total_population = [len(data['population']) for data in population_data.values()]
-
-    # Line chart for total population on a secondary y-axis
-    line_fig = go.Scatter(
-        x=years,
-        y=total_population,
-        mode="lines+markers",
-        name="Total Population",
-        line=dict(color="green", width=3),
-        yaxis="y2",  # Assign to secondary y-axis
-    )
-
-    # Create age-sex pyramid bars for each year
-    bar_figs = []
-    for year, data in population_data.items():
-        pyramid_data = prepare_age_sex_data(data["population"])
-        visible = (year == 0)  # Show only the first year's bars initially
-
-        # Add male and female bars
-        bar_figs.append(go.Bar(
-            y=pyramid_data["age_groups"],
-            x=pyramid_data["male_counts"],
-            orientation="h",
-            name=f"Males (Year {year})",
-            marker_color="blue",
-            visible=visible,
-        ))
-        bar_figs.append(go.Bar(
-            y=pyramid_data["age_groups"],
-            x=pyramid_data["female_counts"],
-            orientation="h",
-            name=f"Females (Year {year})",
-            marker_color="pink",
-            visible=visible,
-        ))
-
-    # Create dropdown menu for interactivity
-    buttons = []
-    for year in years:
-        visibility = [False] * len(years) * 2  # Set all bars to invisible
-        visibility[year * 2] = True  # Male bars for the current year
-        visibility[year * 2 + 1] = True  # Female bars for the current year
-        visibility += [True] * len(years)  # Line graph always visible
-        buttons.append(dict(
-            label=f"Year {year}",
-            method="update",
-            args=[{"visible": visibility}]
-        ))
-
-    # Combine figures
-    fig = go.Figure()
-    fig.add_traces(bar_figs)
-    fig.add_trace(line_fig)
-
-    fig.update_layout(
-        title="Population Dynamics with Age-Sex Pyramid",
-        xaxis=dict(title="Population"),
-        yaxis=dict(title="Age Group", autorange="reversed"),  # For age-sex pyramid
-        yaxis2=dict(
-            title="Total Population",
-            overlaying="y",
-            side="right",
-            showgrid=False
-        ),
-        barmode="relative",
-        updatemenus=[dict(
-            buttons=buttons,
-            direction="down",
-            showactive=True,
-        )]
-    )
-
-    fig.show()
-    fig.write_html("age_sex_pyramid.html")
+def get_max_population_count(population_data):
+    """Compute the maximum population count across all years and age groups."""
+    max_count = 0
+    for year_data in population_data.values():
+        population = year_data['population']
+        pyramid_data = prepare_age_sex_data(population)
+        counts = (
+            pyramid_data['native_male_counts'] + pyramid_data['immigrant_male_counts'] +
+            pyramid_data['native_female_counts'] + pyramid_data['immigrant_female_counts']
+        )
+        counts_abs = [abs(count) for count in counts]
+        if counts_abs:
+            max_count = max(max_count, max(counts_abs))
+    # Add some buffer to the max count
+    max_count = int(max_count * 1.1)
+    return max_count
 
 def get_death_chance(age):
     age = min(100, age)
@@ -187,32 +143,12 @@ def get_death_chance(age):
     p = probability[age] * 0.001
     return p
 
-import pandas as pd
-
-def plot_age_sex_pyramid(population):
-    """Plot the age-sex pyramid of the population."""
-    # Create age-sex groups
-    age_groups = list(range(0, 101, 5))
-    male_counts = [-sum(1 for ind in population if ind.sex == 'male' and age <= ind.age < age+5) for age in age_groups]
-    female_counts = [sum(1 for ind in population if ind.sex == 'female' and age <= ind.age < age+5) for age in age_groups]
-
-    # Plot the pyramid
-    plt.figure(figsize=(10, 6))
-    plt.barh(age_groups, male_counts, color='blue', label='Males')
-    plt.barh(age_groups, female_counts, color='pink', label='Females')
-    plt.xlabel("Population Count")
-    plt.ylabel("Age Group")
-    plt.title("Age-Sex Pyramid")
-    plt.legend()
-    plt.grid()
-    plt.show()
-
 class Individual:
     def __init__(self, id, is_immigrant, sex='male', age=0, fertility_prob=0.1, max_age=100, death_chance=0.0114):
         self.id = id
         self.is_immigrant = is_immigrant
         self.age = age
-        self.sex = sex #if sex else random.choice(['male', 'female'])  # Randomly assign sex if not provided
+        self.sex = sex
         self.partner = None
         self.fertility_prob = fertility_prob
         self.max_age = max_age
@@ -251,7 +187,7 @@ class Individual:
 
 class Population:
     def __init__(self, total_population, immigrant_ratio, native_fertility, immigrant_fertility, max_age=100):
-        self.population = [None] * total_population
+        self.population = []
         self.next_id = 1
 
         # Split initial population into natives and immigrants
@@ -260,22 +196,21 @@ class Population:
 
         # Create initial population with realistic ages
         for _ in range(initial_native_count):
-            print(str(self.next_id))
             sex = np.random.choice(['male', 'female'])
             age = generate_realistic_age(sex)
-            self.population[self.next_id-1] = Individual(
+            self.population.append(Individual(
                 self.next_id, is_immigrant=False, sex=sex, age=age,
                 fertility_prob=native_fertility, max_age=max_age
-            )
+            ))
             self.next_id += 1
         
         for _ in range(initial_immigrant_count):
             sex = np.random.choice(['male', 'female'])
             age = generate_realistic_age(sex)
-            self.population[self.next_id-1] = Individual(
+            self.population.append(Individual(
                 self.next_id, is_immigrant=True, sex=sex, age=age,
                 fertility_prob=immigrant_fertility, max_age=max_age
-            )
+            ))
             self.next_id += 1
 
     def simulate_year(self, net_migration, max_age=100):
@@ -329,7 +264,7 @@ population_data = {}
 
 # Simulation with a starting population of 5.6 million
 def run_large_simulation(years=100, net_migration=56.0):
-    total_population = 5600  # 5.6 million
+    total_population = 5600  # Adjusted for simulation scale
     immigrant_ratio = 0.062
     native_fertility = 0.0126
     immigrant_fertility = 0.017
@@ -340,15 +275,16 @@ def run_large_simulation(years=100, net_migration=56.0):
     for year in range(years):
         pop.simulate_year(net_migration)
         stats.append(pop.get_population_statistics())
-        print("year "+str(year))
+        print(f"Year {year}")
         population_data[year] = {"population": copy.deepcopy(pop.population)}
-        
- #   plot_age_sex_pyramid(pop.population)
-
+    
     return stats
 
 # Run the simulation
 stats = run_large_simulation()
+
+# Compute the maximum population count for x-axis scaling
+max_count = get_max_population_count(population_data)
 
 # Plotting total, native, and immigrant populations
 years = list(range(len(stats)))
@@ -379,8 +315,6 @@ plt.legend()
 plt.grid()
 plt.show()
 
-#plot_interactive_population(population_data)
-
 # Dash app initialization
 app = dash.Dash(__name__)
 
@@ -404,7 +338,7 @@ app.layout = html.Div([
 # Callback for total population trend graph
 @app.callback(
     Output("population-trend", "figure"),
-    Input("population-trend", "hoverData")  # Correct Input dependency
+    Input("population-trend", "hoverData")
 )
 def create_population_trend(_):
     # Total population trend
@@ -432,7 +366,7 @@ def create_population_trend(_):
 # Callback for age-sex pyramid
 @app.callback(
     Output("age-sex-pyramid", "figure"),
-    Input("population-trend", "hoverData")  # Fix to connect with the correct hoverData
+    Input("population-trend", "hoverData")
 )
 def update_age_sex_pyramid(hoverData):
     # Determine the hovered year
@@ -445,24 +379,46 @@ def update_age_sex_pyramid(hoverData):
     pyramid_data = prepare_age_sex_data(population)
 
     fig = go.Figure()
+
+    # Plot native males
     fig.add_trace(go.Bar(
         y=pyramid_data["age_groups"],
-        x=pyramid_data["male_counts"],
+        x=pyramid_data["native_male_counts"],
         orientation="h",
-        name="Males",
+        name="Native Males",
         marker_color="blue"
     ))
+    # Plot immigrant males
     fig.add_trace(go.Bar(
         y=pyramid_data["age_groups"],
-        x=pyramid_data["female_counts"],
+        x=pyramid_data["immigrant_male_counts"],
         orientation="h",
-        name="Females",
-        marker_color="pink"
+        name="Immigrant Males",
+        marker_color="lightblue"
+    ))
+    # Plot native females
+    fig.add_trace(go.Bar(
+        y=pyramid_data["age_groups"],
+        x=pyramid_data["native_female_counts"],
+        orientation="h",
+        name="Native Females",
+        marker_color="red"
+    ))
+    # Plot immigrant females
+    fig.add_trace(go.Bar(
+        y=pyramid_data["age_groups"],
+        x=pyramid_data["immigrant_female_counts"],
+        orientation="h",
+        name="Immigrant Females",
+        marker_color="lightsalmon"
     ))
 
     fig.update_layout(
         title=f"Age-Sex Pyramid for Year {year}",
-        xaxis=dict(title="Population"),
+        xaxis=dict(
+            title="Population",
+            range=[-max_count, max_count]  # Set static x-axis range
+        ),
         yaxis=dict(title="Age Group", autorange="reversed"),
         barmode="relative",
         hovermode="y unified"
