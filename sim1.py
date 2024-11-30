@@ -159,6 +159,7 @@ def plot_interactive_population(population_data):
     fig.write_html("age_sex_pyramid.html")
 
 def get_death_chance(age):
+    age = min(100, age)
     probability = [
         1.75, 0.17, 0.18, 0.02, 0.19,
         0.08, 0.02, 0.09, 0.18, 0.11,
@@ -221,7 +222,7 @@ class Individual:
         """Age the individual by one year and check for death."""
         self.age += 1
         death_chance = get_death_chance(self.age)
-        if random.random() < death_chance or self.age > self.max_age:
+        if np.random.random() < death_chance or self.age > self.max_age:
             return False
         return True
 
@@ -239,18 +240,18 @@ class Individual:
             and abs(ind.age - self.age) <= 5
         ]
         if potential_partners:
-            self.partner = random.choice(potential_partners)
+            self.partner = np.random.choice(potential_partners)
             self.partner.partner = self
     
     def have_offspring(self, next_id):
         """Attempt to have offspring, only for male-female couples."""
-        if self.partner and self.sex == 'female' and random.random() < self.fertility_prob:
-            return Individual(next_id, self.is_immigrant, sex=random.choice(['male', 'female']), fertility_prob=self.fertility_prob)
+        if self.partner and self.sex == 'female' and np.random.random() < self.fertility_prob:
+            return Individual(next_id, self.is_immigrant, sex=np.random.choice(['male', 'female']), fertility_prob=self.fertility_prob)
         return None
 
 class Population:
     def __init__(self, total_population, immigrant_ratio, native_fertility, immigrant_fertility, max_age=100):
-        self.population = []
+        self.population = [None] * total_population
         self.next_id = 1
 
         # Split initial population into natives and immigrants
@@ -259,24 +260,25 @@ class Population:
 
         # Create initial population with realistic ages
         for _ in range(initial_native_count):
-            sex = random.choice(['male', 'female'])
+            print(str(self.next_id))
+            sex = np.random.choice(['male', 'female'])
             age = generate_realistic_age(sex)
-            self.population.append(Individual(
+            self.population[self.next_id-1] = Individual(
                 self.next_id, is_immigrant=False, sex=sex, age=age,
                 fertility_prob=native_fertility, max_age=max_age
-            ))
+            )
             self.next_id += 1
         
         for _ in range(initial_immigrant_count):
-            sex = random.choice(['male', 'female'])
+            sex = np.random.choice(['male', 'female'])
             age = generate_realistic_age(sex)
-            self.population.append(Individual(
+            self.population[self.next_id-1] = Individual(
                 self.next_id, is_immigrant=True, sex=sex, age=age,
                 fertility_prob=immigrant_fertility, max_age=max_age
-            ))
+            )
             self.next_id += 1
 
-    def simulate_year(self, net_migration_rate, max_age=100):
+    def simulate_year(self, net_migration, max_age=100):
         """Simulate a year of aging, reproduction, and death."""
         new_population = []
 
@@ -297,11 +299,11 @@ class Population:
                 self.next_id += 1
 
         # Add net migration
-        for _ in range(int(net_migration_rate * len(new_population))):
-            age = random.randint(0, max_age)
+        for _ in range(int(net_migration)):
+            age = np.random.randint(0, max_age)
             new_population.append(Individual(
                 self.next_id, is_immigrant=True, age=age,
-                sex=random.choice(['male', 'female']), fertility_prob=0.017
+                sex=np.random.choice(['male', 'female']), fertility_prob=0.017
             ))
             self.next_id += 1
 
@@ -326,9 +328,9 @@ class Population:
 population_data = {}
 
 # Simulation with a starting population of 5.6 million
-def run_large_simulation(years=100, net_migration_rate=0.01):
+def run_large_simulation(years=100, net_migration=56.0):
     total_population = 5600  # 5.6 million
-    immigrant_ratio = 0.05  # 5% immigrants
+    immigrant_ratio = 0.062
     native_fertility = 0.0126
     immigrant_fertility = 0.017
 
@@ -336,7 +338,7 @@ def run_large_simulation(years=100, net_migration_rate=0.01):
     stats = []
 
     for year in range(years):
-        pop.simulate_year(net_migration_rate)
+        pop.simulate_year(net_migration)
         stats.append(pop.get_population_statistics())
         print("year "+str(year))
         population_data[year] = {"population": copy.deepcopy(pop.population)}
