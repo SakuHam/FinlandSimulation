@@ -318,6 +318,22 @@ stats = run_large_simulation()
 # Compute the maximum population count for x-axis scaling
 max_count = get_max_population_count(population_data)
 
+# Compute the maximum histogram count for y-axis scaling
+def get_max_histogram_count(population_data):
+    """Compute the maximum histogram count across all years for the immigrant gene histogram."""
+    max_hist_count = 0
+    bins = np.arange(0, 1.1, 0.1)  # Bins from 0 to 1 in steps of 0.1
+    for year_data in population_data.values():
+        population = year_data['population']
+        gene_values = [ind.get_gene_value('immigrant_status') for ind in population]
+        hist, _ = np.histogram(gene_values, bins=bins)
+        max_hist_count = max(max_hist_count, max(hist))
+    # Add some buffer to the max count
+    max_hist_count = int(max_hist_count * 1.1)
+    return max_hist_count
+
+max_hist_count = get_max_histogram_count(population_data)
+
 # Prepare data for plotting
 years = list(range(len(stats)))
 total_population = [stat['total_population'] for stat in stats]
@@ -329,33 +345,49 @@ immigrant_percentage = [stat['immigrant_percentage'] for stat in stats]
 # Dash app initialization
 app = dash.Dash(__name__)
 
-# Layout
+# Updated Layout
 app.layout = html.Div([
+    # Top row with two smaller charts side by side
     html.Div([
-        dcc.Graph(
-            id="population-trend",
-            config={"displayModeBar": False}
-        ),
-        dcc.Graph(
-            id="population-breakdown",
-            config={"displayModeBar": False}
-        ),
-        dcc.Graph(
-            id="immigrant-percentage",
-            config={"displayModeBar": False}
-        ),
+        html.Div([
+            dcc.Graph(
+                id="population-breakdown",
+                config={"displayModeBar": False},
+                style={"height": "300px"}
+            )
+        ], style={"width": "48%", "display": "inline-block"}),
+        html.Div([
+            dcc.Graph(
+                id="immigrant-percentage",
+                config={"displayModeBar": False},
+                style={"height": "300px"}
+            )
+        ], style={"width": "48%", "display": "inline-block"})
+    ], style={"display": "flex", "justify-content": "space-between"}),
+
+    # Middle row with two larger charts side by side
+    html.Div([
+        html.Div([
+            dcc.Graph(
+                id="population-trend",
+                config={"displayModeBar": False}
+            )
+        ], style={"width": "48%", "display": "inline-block"}),
+        html.Div([
+            dcc.Graph(
+                id="age-sex-pyramid",
+                config={"displayModeBar": False}
+            )
+        ], style={"width": "48%", "display": "inline-block"})
+    ], style={"display": "flex", "justify-content": "space-between"}),
+
+    # Bottom row with the histogram
+    html.Div([
         dcc.Graph(
             id="immigrant-gene-histogram",
             config={"displayModeBar": False}
         )
-    ], style={"width": "48%", "display": "inline-block", "vertical-align": "top"}),
-
-    html.Div([
-        dcc.Graph(
-            id="age-sex-pyramid",
-            config={"displayModeBar": False}
-        )
-    ], style={"width": "48%", "display": "inline-block", "vertical-align": "top"})
+    ], style={"width": "48%", "display": "inline-block"})
 ])
 
 # Callback for total population trend graph
@@ -541,7 +573,7 @@ def update_immigrant_gene_histogram(hoverData):
     fig.update_layout(
         title=f"Immigrant Gene Value Distribution for Year {year}",
         xaxis=dict(title="Immigrant Gene Value"),
-        yaxis=dict(title="Number of Individuals"),
+        yaxis=dict(title="Number of Individuals", range=[0, max_hist_count]),
         hovermode="x"
     )
 
