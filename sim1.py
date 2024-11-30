@@ -4,6 +4,7 @@ import copy
 import dash
 from dash import dcc, html, Input, Output
 import plotly.graph_objects as go
+from tqdm import tqdm  # Added for progress bar
 
 def generate_realistic_age(sex):
     """
@@ -298,10 +299,10 @@ def run_large_simulation(years=100, net_migration=56.0):
     pop = Population(total_population, immigrant_ratio, native_fertility, immigrant_fertility)
     stats = []
 
-    for year in range(years):
+    # Use tqdm for progress bar
+    for year in tqdm(range(years), desc="Simulating years"):
         pop.simulate_year(net_migration)
         stats.append(pop.get_population_statistics())
-        print(f"Year {year}")
         population_data[year] = {"population": copy.deepcopy(pop.population)}
     
     return stats
