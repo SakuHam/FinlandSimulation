@@ -1,19 +1,17 @@
 import random
 import numpy as np
-import copy
 import dash
 from dash import dcc, html, Input, Output
 import plotly.graph_objects as go
-from tqdm import tqdm  # Added for progress bar
+from tqdm import tqdm
 
 def generate_realistic_age(sex):
     """
     Generate a random age based on a realistic age distribution.
     """
-    # Define age groups (0 to 100)
-    age_groups = list(range(101))
+    age_groups = np.arange(101)
 
-    weights_males = [
+    weights_males = np.array([
         0.021, 0.021, 0.021, 0.021, 0.021,
         0.025, 0.025, 0.025, 0.025, 0.025,
         0.029, 0.029, 0.029, 0.029, 0.029,
@@ -35,9 +33,9 @@ def generate_realistic_age(sex):
         0.002, 0.002, 0.002, 0.002, 0.002,
         0.000, 0.000, 0.000, 0.000, 0.000,
         0.000
-    ]
+    ])
 
-    weights_females = [
+    weights_females = np.array([
         0.020, 0.020, 0.020, 0.020, 0.020,
         0.024, 0.024, 0.024, 0.024, 0.024,
         0.028, 0.028, 0.028, 0.028, 0.028,
@@ -59,13 +57,10 @@ def generate_realistic_age(sex):
         0.006, 0.006, 0.006, 0.006, 0.006,
         0.002, 0.002, 0.002, 0.002, 0.002,
         0.000
-    ]
+    ])
 
     # Normalize weights
-    if sex == 'male':
-        weights = np.array(weights_males)
-    else:
-        weights = np.array(weights_females)
+    weights = weights_males if sex == 'male' else weights_females
     weights /= weights.sum()
 
     # Randomly sample an age
@@ -74,49 +69,40 @@ def generate_realistic_age(sex):
 def prepare_age_sex_data(population):
     """Prepare age-sex pyramid data, including natives and immigrants separately."""
     age_groups = list(range(0, 101, 5))
-    native_male_counts = []
-    immigrant_male_counts = []
-    native_female_counts = []
-    immigrant_female_counts = []
-    
-    for age in age_groups:
-        native_male_counts.append(-sum(
-            1 for ind in population if not ind.is_immigrant and ind.sex == 'male' and age <= ind.age < age + 5))
-        immigrant_male_counts.append(-sum(
-            1 for ind in population if ind.is_immigrant and ind.sex == 'male' and age <= ind.age < age + 5))
-        native_female_counts.append(sum(
-            1 for ind in population if not ind.is_immigrant and ind.sex == 'female' and age <= ind.age < age + 5))
-        immigrant_female_counts.append(sum(
-            1 for ind in population if ind.is_immigrant and ind.sex == 'female' and age <= ind.age < age + 5))
-    
+    native_male_counts = np.zeros(len(age_groups))
+    immigrant_male_counts = np.zeros(len(age_groups))
+    native_female_counts = np.zeros(len(age_groups))
+    immigrant_female_counts = np.zeros(len(age_groups))
+
+    # Vectorize the data extraction
+    ages = np.array([ind.age for ind in population])
+    sexes = np.array([ind.sex for ind in population])
+    is_immigrant = np.array([ind.is_immigrant for ind in population])
+
+    for idx, age in enumerate(age_groups):
+        age_mask = (ages >= age) & (ages < age + 5)
+        native_mask = ~is_immigrant
+        immigrant_mask = is_immigrant
+
+        male_mask = sexes == 'male'
+        female_mask = sexes == 'female'
+
+        native_male_counts[idx] = -np.sum(age_mask & native_mask & male_mask)
+        immigrant_male_counts[idx] = -np.sum(age_mask & immigrant_mask & male_mask)
+        native_female_counts[idx] = np.sum(age_mask & native_mask & female_mask)
+        immigrant_female_counts[idx] = np.sum(age_mask & immigrant_mask & female_mask)
+
     return {
         "age_groups": age_groups,
-        "native_male_counts": native_male_counts,
-        "immigrant_male_counts": immigrant_male_counts,
-        "native_female_counts": native_female_counts,
-        "immigrant_female_counts": immigrant_female_counts
+        "native_male_counts": native_male_counts.tolist(),
+        "immigrant_male_counts": immigrant_male_counts.tolist(),
+        "native_female_counts": native_female_counts.tolist(),
+        "immigrant_female_counts": immigrant_female_counts.tolist()
     }
-
-def get_max_population_count(population_data):
-    """Compute the maximum population count across all years and age groups."""
-    max_count = 0
-    for year_data in population_data.values():
-        population = year_data['population']
-        pyramid_data = prepare_age_sex_data(population)
-        counts = (
-            pyramid_data['native_male_counts'] + pyramid_data['immigrant_male_counts'] +
-            pyramid_data['native_female_counts'] + pyramid_data['immigrant_female_counts']
-        )
-        counts_abs = [abs(count) for count in counts]
-        if counts_abs:
-            max_count = max(max_count, max(counts_abs))
-    # Add some buffer to the max count
-    max_count = int(max_count * 1.1)
-    return max_count
 
 def get_death_chance(age):
     age = min(100, age)
-    probability = [
+    probability = np.array([
         1.75, 0.17, 0.18, 0.02, 0.19,
         0.08, 0.02, 0.09, 0.18, 0.11,
         0.03, 0.08, 0.05, 0.11, 0.16,
@@ -138,7 +124,7 @@ def get_death_chance(age):
         149.01, 166.65, 189.42, 211.54, 242.88,
         269.17, 280.13, 299.23, 321.22, 379.78,
         1000.0
-    ]
+    ])
 
     p = probability[age] * 0.001
     return p
@@ -183,6 +169,7 @@ class Individual:
             return False
         return True
 
+#----------------------------------------------
     def find_partner(self, population):
         """Attempt to find a partner of the opposite sex."""
         if self.partner is not None or not (18 <= self.age <= 40):
@@ -199,6 +186,7 @@ class Individual:
         if potential_partners:
             self.partner = np.random.choice(potential_partners)
             self.partner.partner = self
+#----------------------------------------------
 
     def have_offspring(self, next_id):
         """Attempt to have offspring, only for male-female couples."""
@@ -251,16 +239,40 @@ class Population:
             if individual.age_one_year():
                 new_population.append(individual)
 
-        # Simulate finding partners
         for individual in new_population:
             individual.find_partner(new_population)
+# ----------------------------------------------------
+#        # Reset partners
+#        for individual in new_population:
+#            individual.partner = None
+#
+#        # Prepare lists of partnerable individuals
+#        partnerable_males = [ind for ind in new_population if ind.sex == 'male' and ind.partner is None and 18 <= ind.age <= 70]
+#        partnerable_females = [ind for ind in new_population if ind.sex == 'female' and ind.partner is None and 18 <= ind.age <= 40]
+#
+#        # Shuffle the lists
+#        np.random.shuffle(partnerable_males)
+#        np.random.shuffle(partnerable_females)
+#
+#        # Pair up individuals
+#        min_len = min(len(partnerable_males), len(partnerable_females))
+#        for i in range(min_len):
+#            male = partnerable_males[i]
+#            female = partnerable_females[i]
+#            if abs(male.age - female.age) <= 5:
+#                male.partner = female
+#                female.partner = male
+# ----------------------------------------------------
 
         # Simulate having offspring
+        offspring_list = []
         for individual in new_population:
             offspring = individual.have_offspring(self.next_id)
             if offspring:
-                new_population.append(offspring)
+                offspring_list.append(offspring)
                 self.next_id += 1
+
+        new_population.extend(offspring_list)
 
         # Add net migration
         for _ in range(int(net_migration)):
@@ -277,10 +289,13 @@ class Population:
     def get_population_statistics(self):
         """Calculate population statistics, including sex distribution."""
         total = len(self.population)
-        males = sum(1 for ind in self.population if ind.sex == 'male')
+        sexes = np.array([ind.sex for ind in self.population])
+        gene_values = np.array([ind.get_gene_value('immigrant_status') for ind in self.population])
+
+        males = np.sum(sexes == 'male')
         females = total - males
-        natives = sum(1 for ind in self.population if ind.get_gene_value('immigrant_status') == 0.0)
-        immigrants = sum(1 for ind in self.population if ind.get_gene_value('immigrant_status') == 1.0)
+        natives = np.sum(gene_values == 0.0)
+        immigrants = np.sum(gene_values == 1.0)
         mixed = total - natives - immigrants
         return {
             "total_population": total,
@@ -304,35 +319,47 @@ def run_large_simulation(years=100, net_migration=56.0):
     pop = Population(total_population, immigrant_ratio, native_fertility, immigrant_fertility)
     stats = []
 
+    max_count = 0
+    max_hist_count = 0
+
     # Use tqdm for progress bar
     for year in tqdm(range(years), desc="Simulating years"):
         pop.simulate_year(net_migration)
-        stats.append(pop.get_population_statistics())
-        population_data[year] = {"population": copy.deepcopy(pop.population)}
-    
-    return stats
+        stat = pop.get_population_statistics()
+        stats.append(stat)
+
+        # Prepare data for plotting
+        pyramid_data = prepare_age_sex_data(pop.population)
+        gene_values = [ind.get_gene_value('immigrant_status') for ind in pop.population]
+
+        # Compute counts for max_count
+        counts = (
+            pyramid_data['native_male_counts'] + pyramid_data['immigrant_male_counts'] +
+            pyramid_data['native_female_counts'] + pyramid_data['immigrant_female_counts']
+        )
+        counts_abs = [abs(count) for count in counts]
+        if counts_abs:
+            max_count = max(max_count, max(counts_abs), max_count)
+
+        # Compute histogram counts for max_hist_count
+        bins = np.arange(0, 1.1, 0.1)  # Bins from 0 to 1 in steps of 0.1
+        hist, _ = np.histogram(gene_values, bins=bins)
+        max_hist_count = max(max_hist_count, max(hist), max_hist_count)
+
+        # Store aggregated data
+        population_data[year] = {
+            "pyramid_data": pyramid_data,
+            "gene_values": gene_values
+        }
+
+    # Add buffer to max_count and max_hist_count
+    max_count = int(max_count * 1.1)
+    max_hist_count = int(max_hist_count * 1.1)
+
+    return stats, max_count, max_hist_count
 
 # Run the simulation once
-stats = run_large_simulation()
-
-# Compute the maximum population count for x-axis scaling
-max_count = get_max_population_count(population_data)
-
-# Compute the maximum histogram count for y-axis scaling
-def get_max_histogram_count(population_data):
-    """Compute the maximum histogram count across all years for the immigrant gene histogram."""
-    max_hist_count = 0
-    bins = np.arange(0, 1.1, 0.1)  # Bins from 0 to 1 in steps of 0.1
-    for year_data in population_data.values():
-        population = year_data['population']
-        gene_values = [ind.get_gene_value('immigrant_status') for ind in population]
-        hist, _ = np.histogram(gene_values, bins=bins)
-        max_hist_count = max(max_hist_count, max(hist))
-    # Add some buffer to the max count
-    max_hist_count = int(max_hist_count * 1.1)
-    return max_hist_count
-
-max_hist_count = get_max_histogram_count(population_data)
+stats, max_count, max_hist_count = run_large_simulation()
 
 # Prepare data for plotting
 years = list(range(len(stats)))
@@ -489,8 +516,7 @@ def update_age_sex_pyramid(hoverData):
     else:
         year = 0  # Default to the first year if no hover data is available
 
-    population = population_data[year]["population"]
-    pyramid_data = prepare_age_sex_data(population)
+    pyramid_data = population_data[year]["pyramid_data"]
 
     fig = go.Figure()
 
@@ -552,9 +578,7 @@ def update_immigrant_gene_histogram(hoverData):
     else:
         year = 0  # Default to the first year if no hover data is available
 
-    population = population_data[year]["population"]
-    # Extract immigrant_status gene values
-    gene_values = [ind.get_gene_value('immigrant_status') for ind in population]
+    gene_values = population_data[year]["gene_values"]
 
     # Create histogram
     bins = np.arange(0, 1.1, 0.1)  # Bins from 0 to 1 in steps of 0.1
