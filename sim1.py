@@ -150,6 +150,7 @@ class Individual:
         self.fertility_prob = fertility_prob
         self.max_age = max_age
         self.death_chance = death_chance
+        self.child_count = 0
 
     def get_gene_value(self, gene_name):
         for gene in self.genes:
@@ -169,33 +170,43 @@ class Individual:
             return False
         return True
 
-#----------------------------------------------
-    def find_partner(self, population):
-        """Attempt to find a partner of the opposite sex."""
-        if self.partner is not None or not (18 <= self.age <= 40):
-            return  # Skip if already partnered or outside partnerable age range
-
-        potential_partners = [
-            ind for ind in population
-            if ind.partner is None
-            and ind is not self
-            and ind.sex != self.sex  # Opposite sex
-            and 18 <= ind.age <= 40
-            and abs(ind.age - self.age) <= 5
-        ]
-        if potential_partners:
-            self.partner = np.random.choice(potential_partners)
-            self.partner.partner = self
-#----------------------------------------------
+    def get_dynamic_fertility_prob(self):
+        if self.is_immigrant:
+            if self.child_count < 1:
+                return 0.4 
+            if self.child_count <= 2:
+                return 0.25
+            if self.child_count <= 3:
+                return 0.08
+            if self.child_count <= 4:
+                return 0.02
+            if self.child_count <= 5:
+                return 0.005
+            else:
+                return 0.0
+        else:
+            if self.child_count < 1:
+                return 0.3 
+            if self.child_count <= 2:
+                return 0.12
+            if self.child_count <= 3:
+                return 0.02
+            if self.child_count <= 4:
+                return 0.005
+            if self.child_count <= 5:
+                return 0.002
+            else:
+                return 0.0
 
     def have_offspring(self, next_id):
         """Attempt to have offspring, only for male-female couples."""
-        if self.partner and self.sex == 'female' and np.random.random() < self.fertility_prob:
+        if self.partner and self.sex == 'female' and np.random.random() < self.get_dynamic_fertility_prob():
             # Inherit genes from both parents
             mother_gene_value = self.get_gene_value('immigrant_status')
             father_gene_value = self.partner.get_gene_value('immigrant_status')
             offspring_gene_value = (mother_gene_value + father_gene_value) / 2
             genes = [Gene('immigrant_status', offspring_gene_value)]
+            self.child_count += 1
             return Individual(next_id, genes=genes, sex=np.random.choice(['male', 'female']), fertility_prob=self.fertility_prob)
         return None
 
@@ -239,30 +250,33 @@ class Population:
             if individual.age_one_year():
                 new_population.append(individual)
 
+        potential_partners = [
+            ind for ind in new_population
+            if ind.partner is None
+            and ind.sex == 'female'
+            and 18 <= ind.age <= 40
+        ]
+
+        # Reset partners
         for individual in new_population:
-            individual.find_partner(new_population)
-# ----------------------------------------------------
-#        # Reset partners
-#        for individual in new_population:
-#            individual.partner = None
-#
-#        # Prepare lists of partnerable individuals
-#        partnerable_males = [ind for ind in new_population if ind.sex == 'male' and ind.partner is None and 18 <= ind.age <= 70]
-#        partnerable_females = [ind for ind in new_population if ind.sex == 'female' and ind.partner is None and 18 <= ind.age <= 40]
-#
-#        # Shuffle the lists
-#        np.random.shuffle(partnerable_males)
-#        np.random.shuffle(partnerable_females)
-#
-#        # Pair up individuals
-#        min_len = min(len(partnerable_males), len(partnerable_females))
-#        for i in range(min_len):
-#            male = partnerable_males[i]
-#            female = partnerable_females[i]
-#            if abs(male.age - female.age) <= 5:
-#                male.partner = female
-#                female.partner = male
-# ----------------------------------------------------
+            individual.partner = None
+
+        # Prepare lists of partnerable individuals
+        partnerable_males = [ind for ind in new_population if ind.sex == 'male' and ind.partner is None and 18 <= ind.age <= 70]
+        partnerable_females = [ind for ind in new_population if ind.sex == 'female' and ind.partner is None and 18 <= ind.age <= 40]
+
+        # Shuffle the lists
+        np.random.shuffle(partnerable_males)
+        np.random.shuffle(partnerable_females)
+
+        # Pair up individuals
+        min_len = min(len(partnerable_males), len(partnerable_females))
+        for i in range(min_len):
+            male = partnerable_males[i]
+            female = partnerable_females[i]
+            if abs(male.age - female.age) <= 5:
+                male.partner = female
+                female.partner = male
 
         # Simulate having offspring
         offspring_list = []
