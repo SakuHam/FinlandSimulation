@@ -141,13 +141,13 @@ class Gene:
         self.value = value
 
 class Individual:
-    def __init__(self, id, genes, sex='male', age=0, fertility_prob=0.1, max_age=100, death_chance=0.0114):
+    def __init__(self, id, genes, sex='male', age=0, fertility=2.1, max_age=100, death_chance=0.0114):
         self.id = id
         self.genes = genes
         self.age = age
         self.sex = sex
         self.partner = None
-        self.fertility_prob = fertility_prob
+        self.fertility = fertility
         self.max_age = max_age
         self.death_chance = death_chance
         self.child_count = 0
@@ -207,7 +207,7 @@ class Individual:
             offspring_gene_value = (mother_gene_value + father_gene_value) / 2
             genes = [Gene('immigrant_status', offspring_gene_value)]
             self.child_count += 1
-            return Individual(next_id, genes=genes, sex=np.random.choice(['male', 'female']), fertility_prob=self.fertility_prob)
+            return Individual(next_id, genes=genes, sex=np.random.choice(['male', 'female']), fertility=self.fertility), mother_gene_value
         return None
 
 class Population:
@@ -226,7 +226,7 @@ class Population:
             genes = [Gene('immigrant_status', 0.0)]  # Natives have 0.0
             self.population.append(Individual(
                 self.next_id, genes=genes, sex=sex, age=age,
-                fertility_prob=native_fertility, max_age=max_age
+                fertility=native_fertility, max_age=max_age
             ))
             self.next_id += 1
 
@@ -237,7 +237,7 @@ class Population:
             genes = [Gene('immigrant_status', 1.0)]  # Immigrants have 1.0
             self.population.append(Individual(
                 self.next_id, genes=genes, sex=sex, age=age,
-                fertility_prob=immigrant_fertility, max_age=max_age
+                fertility=immigrant_fertility, max_age=max_age
             ))
             self.next_id += 1
 
@@ -250,12 +250,10 @@ class Population:
             if individual.age_one_year():
                 new_population.append(individual)
 
-        potential_partners = [
-            ind for ind in new_population
-            if ind.partner is None
-            and ind.sex == 'female'
-            and 18 <= ind.age <= 40
-        ]
+        # Initialize counts for births and women of reproductive age
+        births_natives = 0
+        births_immigrants = 0
+        births_mixed = 0
 
         # Reset partners
         for individual in new_population:
@@ -281,10 +279,18 @@ class Population:
         # Simulate having offspring
         offspring_list = []
         for individual in new_population:
-            offspring = individual.have_offspring(self.next_id)
-            if offspring:
+            offspring_data = individual.have_offspring(self.next_id)
+            if offspring_data:
+                offspring, mother_gene_value = offspring_data
                 offspring_list.append(offspring)
                 self.next_id += 1
+                # Increment birth counts based on mother's gene value
+                if mother_gene_value == 0.0:
+                    births_natives += 1
+                elif mother_gene_value == 1.0:
+                    births_immigrants += 1
+                else:
+                    births_mixed += 1
 
         new_population.extend(offspring_list)
 
@@ -294,11 +300,33 @@ class Population:
             genes = [Gene('immigrant_status', 1.0)]  # New immigrants have 1.0
             new_population.append(Individual(
                 self.next_id, genes=genes, age=age,
-                sex=np.random.choice(['male', 'female']), fertility_prob=0.017
+                sex=np.random.choice(['male', 'female']), fertility=1.7
             ))
             self.next_id += 1
 
+        # Collect counts of women of reproductive age
+        women_natives = 0
+        women_immigrants = 0
+        women_mixed = 0
+        for individual in new_population:
+            if individual.sex == 'female' and 15 <= individual.age <= 49:
+                gene_value = individual.get_gene_value('immigrant_status')
+                if gene_value == 0.0:
+                    women_natives += 1
+                elif gene_value == 1.0:
+                    women_immigrants += 1
+                else:
+                    women_mixed += 1
+
         self.population = new_population
+
+        # Store counts in instance variables for statistics
+        self.births_natives = births_natives
+        self.births_immigrants = births_immigrants
+        self.births_mixed = births_mixed
+        self.women_natives = women_natives
+        self.women_immigrants = women_immigrants
+        self.women_mixed = women_mixed
 
     def get_population_statistics(self):
         """Calculate population statistics, including sex distribution."""
@@ -318,7 +346,13 @@ class Population:
             "mixed_population": mixed,
             "male_population": males,
             "female_population": females,
-            "immigrant_percentage": ((immigrants + mixed) / total) * 100
+            "immigrant_percentage": ((immigrants + mixed) / total) * 100,
+            "births_natives": self.births_natives,
+            "births_immigrants": self.births_immigrants,
+            "births_mixed": self.births_mixed,
+            "women_natives": self.women_natives,
+            "women_immigrants": self.women_immigrants,
+            "women_mixed": self.women_mixed
         }
 
 population_data = {}
@@ -327,11 +361,15 @@ population_data = {}
 def run_large_simulation(years=100, net_migration=56.0):
     total_population = 5600  # Adjusted for simulation scale
     immigrant_ratio = 0.062
-    native_fertility = 0.0126
-    immigrant_fertility = 0.017
+    native_fertility = 1.26
+    immigrant_fertility = 1.7
 
     pop = Population(total_population, immigrant_ratio, native_fertility, immigrant_fertility)
     stats = []
+
+    fertility_rates_natives = []
+    fertility_rates_immigrants = []
+    fertility_rates_mixed = []
 
     max_count = 0
     max_hist_count = 0
@@ -341,6 +379,24 @@ def run_large_simulation(years=100, net_migration=56.0):
         pop.simulate_year(net_migration)
         stat = pop.get_population_statistics()
         stats.append(stat)
+
+        # Calculate fertility rates
+        if stat['women_natives'] > 0:
+            fertility_rate_natives = stat['births_natives'] / stat['women_natives']
+        else:
+            fertility_rate_natives = 0
+        if stat['women_immigrants'] > 0:
+            fertility_rate_immigrants = stat['births_immigrants'] / stat['women_immigrants']
+        else:
+            fertility_rate_immigrants = 0
+        if stat['women_mixed'] > 0:
+            fertility_rate_mixed = stat['births_mixed'] / stat['women_mixed']
+        else:
+            fertility_rate_mixed = 0
+
+        fertility_rates_natives.append(fertility_rate_natives)
+        fertility_rates_immigrants.append(fertility_rate_immigrants)
+        fertility_rates_mixed.append(fertility_rate_mixed)
 
         # Prepare data for plotting
         pyramid_data = prepare_age_sex_data(pop.population)
@@ -370,10 +426,10 @@ def run_large_simulation(years=100, net_migration=56.0):
     max_count = int(max_count * 1.1)
     max_hist_count = int(max_hist_count * 1.1)
 
-    return stats, max_count, max_hist_count
+    return stats, max_count, max_hist_count, fertility_rates_natives, fertility_rates_immigrants, fertility_rates_mixed
 
 # Run the simulation once
-stats, max_count, max_hist_count = run_large_simulation()
+stats, max_count, max_hist_count, fertility_rates_natives, fertility_rates_immigrants, fertility_rates_mixed = run_large_simulation()
 
 # Prepare data for plotting
 years = list(range(len(stats)))
@@ -388,7 +444,7 @@ app = dash.Dash(__name__)
 
 # Updated Layout
 app.layout = html.Div([
-    # Top row with two smaller charts side by side
+    # Top row with three charts
     html.Div([
         html.Div([
             dcc.Graph(
@@ -396,14 +452,21 @@ app.layout = html.Div([
                 config={"displayModeBar": False},
                 style={"height": "300px"}
             )
-        ], style={"width": "48%", "display": "inline-block"}),
+        ], style={"width": "32%", "display": "inline-block"}),
         html.Div([
             dcc.Graph(
                 id="immigrant-percentage",
                 config={"displayModeBar": False},
                 style={"height": "300px"}
             )
-        ], style={"width": "48%", "display": "inline-block"})
+        ], style={"width": "32%", "display": "inline-block"}),
+        html.Div([
+            dcc.Graph(
+                id="fertility-chart",
+                config={"displayModeBar": False},
+                style={"height": "300px"}
+            )
+        ], style={"width": "32%", "display": "inline-block"})
     ], style={"display": "flex", "justify-content": "space-between"}),
 
     # Middle row with two larger charts side by side
@@ -615,6 +678,42 @@ def update_immigrant_gene_histogram(hoverData):
         hovermode="x"
     )
 
+    return fig
+
+# Callback for the new fertility chart
+@app.callback(
+    Output("fertility-chart", "figure"),
+    Input("population-trend", "hoverData")
+)
+def update_fertility_chart(hoverData):
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(
+        x=years,
+        y=fertility_rates_natives,
+        mode="lines",
+        name="Native Fertility Rate",
+        line=dict(color='blue')
+    ))
+    fig.add_trace(go.Scatter(
+        x=years,
+        y=fertility_rates_immigrants,
+        mode="lines",
+        name="Immigrant Fertility Rate",
+        line=dict(color='red')
+    ))
+    fig.add_trace(go.Scatter(
+        x=years,
+        y=fertility_rates_mixed,
+        mode="lines",
+        name="Mixed Fertility Rate",
+        line=dict(color='purple')
+    ))
+    fig.update_layout(
+        title="Fertility Rates Over Time",
+        xaxis=dict(title="Year"),
+        yaxis=dict(title="Births per Woman per Year"),
+        hovermode="x unified"
+    )
     return fig
 
 # Run the server
