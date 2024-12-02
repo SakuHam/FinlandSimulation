@@ -14,16 +14,21 @@ import sim1  # Importing the simulation module
     avg_children_per_female_natives,
     avg_children_per_female_immigrants,
     avg_children_per_female_mixed,
-    population_data
+    population_data,
+    simulation_batch  # Include simulation_batch in the outputs
 ) = sim1.run_large_simulation()
+
+# Scale max_count and max_hist_count
+max_count *= simulation_batch
+max_hist_count *= simulation_batch
 
 # Prepare data for plotting
 years = list(range(len(stats)))
-total_population = [stat['total_population'] for stat in stats]
-native_population = [stat['native_population'] for stat in stats]
-immigrant_population = [stat['immigrant_population'] for stat in stats]
-mixed_population = [stat['mixed_population'] for stat in stats]
-immigrant_percentage = [stat['immigrant_percentage'] for stat in stats]
+total_population = [stat['total_population'] * simulation_batch for stat in stats]
+native_population = [stat['native_population'] * simulation_batch for stat in stats]
+immigrant_population = [stat['immigrant_population'] * simulation_batch for stat in stats]
+mixed_population = [stat['mixed_population'] * simulation_batch for stat in stats]
+immigrant_percentage = [stat['immigrant_percentage'] for stat in stats]  # Percentages remain the same
 
 # Dash app initialization
 app = dash.Dash(__name__)
@@ -167,7 +172,7 @@ def create_immigrant_percentage(_):
 
     return fig
 
-# Callback for age-sex pyramid
+# Updated Callback for age-sex pyramid
 @app.callback(
     Output("age-sex-pyramid", "figure"),
     Input("population-trend", "hoverData")
@@ -181,50 +186,78 @@ def update_age_sex_pyramid(hoverData):
 
     pyramid_data = population_data[year]["pyramid_data"]
 
+    # Scale counts by simulation_batch (no negation)
+    scaled_native_male_counts = [count * simulation_batch for count in pyramid_data["native_male_counts"]]
+    scaled_immigrant_male_counts = [count * simulation_batch for count in pyramid_data["immigrant_male_counts"]]
+    scaled_native_female_counts = [count * simulation_batch for count in pyramid_data["native_female_counts"]]
+    scaled_immigrant_female_counts = [count * simulation_batch for count in pyramid_data["immigrant_female_counts"]]
+
+    # Calculate max count for axis scaling
+    max_male = max([abs(count) for count in scaled_native_male_counts + scaled_immigrant_male_counts])
+    max_female = max([abs(count) for count in scaled_native_female_counts + scaled_immigrant_female_counts])
+    max_pyramid_count = max(max_male, max_female)
+
     fig = go.Figure()
 
-    # Plot native males
+    # Plot natives first to have immigrants on the outside
+    # Males (negative counts)
     fig.add_trace(go.Bar(
         y=pyramid_data["age_groups"],
-        x=pyramid_data["native_male_counts"],
+        x=scaled_native_male_counts,
         orientation="h",
         name="Native Males",
-        marker_color="blue"
+        marker_color="blue",
+        hovertemplate='Age Group: %{y}<br>Count: %{x}<extra></extra>',
+        offsetgroup=-1,
+        legendgroup='Males'
     ))
-    # Plot immigrant males
     fig.add_trace(go.Bar(
         y=pyramid_data["age_groups"],
-        x=pyramid_data["immigrant_male_counts"],
+        x=scaled_immigrant_male_counts,
         orientation="h",
         name="Immigrant Males",
-        marker_color="lightblue"
+        marker_color="lightblue",
+        hovertemplate='Age Group: %{y}<br>Count: %{x}<extra></extra>',
+        offsetgroup=-1,
+        base=scaled_native_male_counts,
+        legendgroup='Males'
     ))
-    # Plot native females
+    # Females (positive counts)
     fig.add_trace(go.Bar(
         y=pyramid_data["age_groups"],
-        x=pyramid_data["native_female_counts"],
+        x=scaled_native_female_counts,
         orientation="h",
         name="Native Females",
-        marker_color="red"
+        marker_color="red",
+        hovertemplate='Age Group: %{y}<br>Count: %{x}<extra></extra>',
+        offsetgroup=1,
+        legendgroup='Females'
     ))
-    # Plot immigrant females
     fig.add_trace(go.Bar(
         y=pyramid_data["age_groups"],
-        x=pyramid_data["immigrant_female_counts"],
+        x=scaled_immigrant_female_counts,
         orientation="h",
         name="Immigrant Females",
-        marker_color="lightsalmon"
+        marker_color="lightsalmon",
+        hovertemplate='Age Group: %{y}<br>Count: %{x}<extra></extra>',
+        offsetgroup=1,
+        base=scaled_native_female_counts,
+        legendgroup='Females'
     ))
 
     fig.update_layout(
         title=f"Age-Sex Pyramid for Year {year}",
         xaxis=dict(
             title="Population",
-            range=[-max_count, max_count]  # Set static x-axis range
+            tickvals=[-max_pyramid_count, -max_pyramid_count/2, 0, max_pyramid_count/2, max_pyramid_count],
+            ticktext=[str(int(abs(val))) for val in [-max_pyramid_count, -max_pyramid_count/2, 0, max_pyramid_count/2, max_pyramid_count]],
+            range=[-max_pyramid_count * 1.1, max_pyramid_count * 1.1],  # Adding some padding
         ),
         yaxis=dict(title="Age Group", autorange="reversed"),
         barmode="relative",
-        hovermode="y unified"
+        bargap=0.1,
+        hovermode="y unified",
+        legend_title="Population Groups"
     )
 
     return fig
@@ -246,6 +279,9 @@ def update_immigrant_gene_histogram(hoverData):
     # Create histogram
     bins = np.arange(0, 1.1, 0.1)  # Bins from 0 to 1 in steps of 0.1
     hist, bin_edges = np.histogram(gene_values, bins=bins)
+
+    # Scale histogram counts
+    hist = hist * simulation_batch
 
     # Prepare data for bar chart
     bin_centers = (bin_edges[:-1] + bin_edges[1:]) / 2

@@ -5,6 +5,15 @@ from dash import dcc, html, Input, Output
 import plotly.graph_objects as go
 from tqdm import tqdm
 
+# Simulation parameters
+years=100
+simulation_batch = 1000
+net_migration=int(56000 / simulation_batch)
+total_population = int(5600000 / simulation_batch)
+immigrant_ratio = 0.062
+native_fertility = 1.26
+immigrant_fertility = 1.7
+
 def generate_realistic_age(sex):
     """
     Generate a random age based on a realistic age distribution.
@@ -304,7 +313,7 @@ class Population:
             genes = [Gene('immigrant_status', 1.0)]  # New immigrants have 1.0
             new_population.append(Individual(
                 self.next_id, genes=genes, age=age,
-                sex=np.random.choice(['male', 'female']), fertility=1.7
+                sex=np.random.choice(['male', 'female']), fertility=immigrant_fertility
             ))
             self.next_id += 1
 
@@ -347,8 +356,8 @@ class Population:
         immigrant_females = [ind for ind in self.population if ind.sex == 'female' and ind.get_gene_value('immigrant_status') == 1.0 and 18 <= ind.age]
 
         # Adjust child counts
-        distribute_extra_children(native_females, 1.26)
-        distribute_extra_children(immigrant_females, 1.7)
+        distribute_extra_children(native_females, native_fertility)
+        distribute_extra_children(immigrant_females, immigrant_fertility)
 
     def get_population_statistics(self):
         """Calculate population statistics, including sex distribution."""
@@ -377,11 +386,7 @@ class Population:
 population_data = {}
 
 # Simulation with a starting population of 5.6 million
-def run_large_simulation(years=100, net_migration=560.0):
-    total_population = 56000  # Adjusted for simulation scale
-    immigrant_ratio = 0.062
-    native_fertility = 1.26
-    immigrant_fertility = 1.7
+def run_large_simulation():
 
     pop = Population(total_population, immigrant_ratio, native_fertility, immigrant_fertility)
     pop.create_realistic_child_count()
@@ -433,5 +438,5 @@ def run_large_simulation(years=100, net_migration=560.0):
     max_count = int(max_count * 1.1)
     max_hist_count = int(max_hist_count * 1.1)
 
-    return stats, max_count, max_hist_count, avg_children_per_female_natives, avg_children_per_female_immigrants, avg_children_per_female_mixed, population_data
+    return stats, max_count, max_hist_count, avg_children_per_female_natives, avg_children_per_female_immigrants, avg_children_per_female_mixed, population_data, simulation_batch
 
