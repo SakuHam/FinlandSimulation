@@ -270,7 +270,6 @@ def update_age_sex_pyramid(hoverData):
 
     return fig
 
-# Callback for the immigrant gene histogram
 @app.callback(
     Output("immigrant-gene-histogram", "figure"),
     Input("population-trend", "hoverData")
@@ -289,61 +288,61 @@ def update_immigrant_gene_histogram(hoverData):
     immigrant1_values = [gv.get('immigrant_1', 0) for gv in gene_values]
     immigrant2_values = [gv.get('immigrant_2', 0) for gv in gene_values]
 
+    # Compute histograms manually
+    bins = np.arange(0, 110, 10)  # 0-10, 10-20, ..., 90-100
+    hist_native, _ = np.histogram(native_values, bins=bins)
+    hist_immigrant1, _ = np.histogram(immigrant1_values, bins=bins)
+    hist_immigrant2, _ = np.histogram(immigrant2_values, bins=bins)
+
+    # Scale counts by simulation_batch to reflect the entire population
+    hist_native_scaled = hist_native * simulation_batch
+    hist_immigrant1_scaled = hist_immigrant1 * simulation_batch
+    hist_immigrant2_scaled = hist_immigrant2 * simulation_batch
+
     # Create histogram traces for each gene type
     fig = go.Figure()
 
     # Plot Native gene histogram
-    fig.add_trace(go.Histogram(
-        x=native_values,  # Already in percentage
+    fig.add_trace(go.Bar(
+        x=bins[:-1] + 5,  # Bin centers: 5, 15, ..., 95
+        y=hist_native_scaled,
         name="Native",
         marker_color="blue",
-        opacity=0.5,
-        xbins=dict(
-            start=0,
-            end=100,
-            size=10
-        )
+        opacity=0.8
     ))
 
     # Plot Immigrant 1 gene histogram
-    fig.add_trace(go.Histogram(
-        x=immigrant1_values,  # Already in percentage
+    fig.add_trace(go.Bar(
+        x=bins[:-1] + 5,
+        y=hist_immigrant1_scaled,
         name="Immigrant 1",
         marker_color="red",
-        opacity=0.5,
-        xbins=dict(
-            start=0,
-            end=100,
-            size=10
-        )
+        opacity=0.8
     ))
 
     # Plot Immigrant 2 gene histogram
-    fig.add_trace(go.Histogram(
-        x=immigrant2_values,  # Already in percentage
+    fig.add_trace(go.Bar(
+        x=bins[:-1] + 5,
+        y=hist_immigrant2_scaled,
         name="Immigrant 2",
         marker_color="orange",
-        opacity=0.5,
-        xbins=dict(
-            start=0,
-            end=100,
-            size=10
-        )
+        opacity=0.8
     ))
 
-    # Overlay the histograms
+    # Update layout to display histograms side by side
     fig.update_layout(
         title=f"Immigrant Gene Value Distribution for Year {year}",
         xaxis=dict(
             title="Gene Percentage (%)",
+            tickvals=bins[:-1] + 5,
+            ticktext=[f"{int(val)}-{int(val+10)}%" for val in bins[:-1]],
             range=[0, 100],
-            dtick=10
         ),
         yaxis=dict(
             title="Number of Individuals",
-            range=[0, max_hist_count/simulation_batch]
+            range=[0, max_hist_count]
         ),
-        barmode='overlay',  # Overlay histograms
+        barmode='group',  # Changed from 'overlay' to 'group' for side-by-side bars
         hovermode="x unified",
         legend=dict(title="Gene Types")
     )
