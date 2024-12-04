@@ -6,9 +6,9 @@ import plotly.graph_objects as go
 from tqdm import tqdm
 
 # Simulation parameters
-years=100
+years = 100
 simulation_batch = 1000
-net_migration=int(56000 / simulation_batch)
+net_migration = int(56000 / simulation_batch)
 total_population = int(5600000 / simulation_batch)
 immigrant_ratio = 0.062
 native_fertility = 1.26
@@ -144,15 +144,28 @@ sigma = 10.220
 immigrant_age_probabilities = np.exp(-((ages_for_immigrants - 25)**2) / (2 * sigma**2))
 immigrant_age_probabilities /= immigrant_age_probabilities.sum()
 
-class Gene:
-    def __init__(self, name, value):
-        self.name = name
-        self.value = value
+class GeneGroup:
+    def __init__(self, genes=None):
+        if genes is None:
+            self.genes = {}
+        else:
+            self.genes = genes  # Should be a dict mapping from gene name to gene value
+
+    def add_gene(self, name, value):
+        self.genes[name] = value
+
+    def get_gene_value(self, name):
+        return self.genes.get(name, 0.0)  # Default to 0.0 if gene not present
+
+    def calculate_percentages(self):
+        total = sum(self.genes.values())
+        percentages = {name: (value / total) * 100 if total != 0 else 0 for name, value in self.genes.items()}
+        return percentages
 
 class Individual:
-    def __init__(self, id, genes, sex='male', age=0, fertility=2.1, max_age=100, death_chance=0.0114):
+    def __init__(self, id, gene_group, sex='male', age=0, fertility=2.1, max_age=100, death_chance=0.0114):
         self.id = id
-        self.genes = genes
+        self.gene_group = gene_group
         self.age = age
         self.sex = sex
         self.partner = None
@@ -162,14 +175,26 @@ class Individual:
         self.child_count = 0
 
     def get_gene_value(self, gene_name):
-        for gene in self.genes:
-            if gene.name == gene_name:
-                return gene.value
-        return None
+        return self.gene_group.get_gene_value(gene_name)
 
     @property
     def is_immigrant(self):
-        return self.get_gene_value('immigrant_status') >= 0.5
+        # Consider an individual an immigrant if 'native' gene is less than 0.5
+        return self.get_gene_value('native') < 0.5
+
+    @property
+    def immigrant_type(self):
+        # Determine the immigrant type based on the highest immigrant gene value
+        imm1 = self.get_gene_value('immigrant_1')
+        imm2 = self.get_gene_value('immigrant_2')
+        if imm1 >= imm2:
+            return 'immigrant_1'
+        elif imm2 > imm1:
+            return 'immigrant_2'
+        elif imm1 == imm2:
+            return 'mixed'
+        else:
+            return "native"  # Native
 
     def age_one_year(self):
         """Age the individual by one year and check for death."""
@@ -211,13 +236,26 @@ class Individual:
         """Attempt to have offspring, only for male-female couples."""
         if self.partner and self.sex == 'female' and np.random.random() < self.get_dynamic_fertility_prob():
             # Inherit genes from both parents
-            mother_gene_value = self.get_gene_value('immigrant_status')
-            father_gene_value = self.partner.get_gene_value('immigrant_status')
-            offspring_gene_value = (mother_gene_value + father_gene_value) / 2
-            genes = [Gene('immigrant_status', offspring_gene_value)]
+            mother_genes = self.gene_group.genes
+            father_genes = self.partner.gene_group.genes
+            offspring_genes = {}
+            for gene_name in set(mother_genes.keys()).union(father_genes.keys()):
+                mother_value = mother_genes.get(gene_name, 0.0)
+                father_value = father_genes.get(gene_name, 0.0)
+                offspring_genes[gene_name] = (mother_value + father_value) / 2
+
+            # Validate that the sum of gene values is approximately 1.0
+            total_gene_value = sum(offspring_genes.values())
+            if not np.isclose(total_gene_value, 1.0, atol=1e-2):
+                raise ValueError(
+                    f"Offspring gene values sum to {total_gene_value}, which is not near 1.0. "
+                    f"Genes: {offspring_genes}"
+                )
+            
+            gene_group = GeneGroup(genes=offspring_genes)
             self.child_count += 1
             self.partner.child_count += 1  # Also increment the partner's child count
-            return Individual(next_id, genes=genes, sex=np.random.choice(['male', 'female']), fertility=self.fertility)
+            return Individual(next_id, gene_group=gene_group, sex=np.random.choice(['male', 'female']), fertility=self.fertility)
         return None
 
 class Population:
@@ -238,9 +276,12 @@ class Population:
         for _ in range(initial_native_count):
             sex = np.random.choice(['male', 'female'])
             age = generate_realistic_age(sex)
-            genes = [Gene('immigrant_status', 0.0)]  # Natives have 0.0
+            gene_group = GeneGroup()
+            gene_group.add_gene('native', 1.0)  # Natives have 'native' gene set to 1.0
+            gene_group.add_gene('immigrant_1', 0.0)
+            gene_group.add_gene('immigrant_2', 0.0)
             self.population.append(Individual(
-                self.next_id, genes=genes, sex=sex, age=age,
+                self.next_id, gene_group=gene_group, sex=sex, age=age,
                 fertility=native_fertility, max_age=max_age
             ))
             self.next_id += 1
@@ -249,9 +290,16 @@ class Population:
         for _ in range(initial_immigrant_count):
             sex = np.random.choice(['male', 'female'])
             age = generate_realistic_age(sex)
-            genes = [Gene('immigrant_status', 1.0)]  # Immigrants have 1.0
+            gene_group = GeneGroup()
+            gene_group.add_gene('native', 0.0)  # Immigrants have 'native' gene set to 0.0
+            # Assign 'immigrant_1' or 'immigrant_2' with probabilities 20% and 80%
+            immigrant_gene = np.random.choice(['immigrant_1', 'immigrant_2'], p=[0.2, 0.8])
+            gene_group.add_gene(immigrant_gene, 1.0)
+            # Ensure the other immigrant gene is set to 0.0
+            other_immigrant_gene = 'immigrant_1' if immigrant_gene == 'immigrant_2' else 'immigrant_2'
+            gene_group.add_gene(other_immigrant_gene, 0.0)
             self.population.append(Individual(
-                self.next_id, genes=genes, sex=sex, age=age,
+                self.next_id, gene_group=gene_group, sex=sex, age=age,
                 fertility=immigrant_fertility, max_age=max_age
             ))
             self.next_id += 1
@@ -268,10 +316,10 @@ class Population:
             else:
                 # If the individual is a female, store her child count and immigration status
                 if individual.sex == 'female':
-                    gene_value = individual.get_gene_value('immigrant_status')
-                    if gene_value == 0.0:
+                    if individual.get_gene_value('native') == 1.0:
                         self.deceased_females_natives.append(individual.child_count)
-                    elif gene_value == 1.0:
+                    elif individual.get_gene_value('native') == 0.0 and (
+                        individual.get_gene_value('immigrant_1') == 1.0 or individual.get_gene_value('immigrant_2') == 1.0):
                         self.deceased_females_immigrants.append(individual.child_count)
                     else:
                         self.deceased_females_mixed.append(individual.child_count)
@@ -310,9 +358,15 @@ class Population:
         # Add net migration
         for _ in range(int(net_migration)):
             age = np.random.choice(ages_for_immigrants, p=immigrant_age_probabilities)
-            genes = [Gene('immigrant_status', 1.0)]  # New immigrants have 1.0
+            gene_group = GeneGroup()
+            gene_group.add_gene('native', 0.0)  # New immigrants have 'native' gene set to 0.0
+            # Assign 'immigrant_1' or 'immigrant_2' with probabilities 20% and 80%
+            immigrant_gene = np.random.choice(['immigrant_1', 'immigrant_2'], p=[0.2, 0.8])
+            gene_group.add_gene(immigrant_gene, 1.0)
+            other_immigrant_gene = 'immigrant_1' if immigrant_gene == 'immigrant_2' else 'immigrant_2'
+            gene_group.add_gene(other_immigrant_gene, 0.0)
             new_population.append(Individual(
-                self.next_id, genes=genes, age=age,
+                self.next_id, gene_group=gene_group, age=age,
                 sex=np.random.choice(['male', 'female']), fertility=immigrant_fertility
             ))
             self.next_id += 1
@@ -352,8 +406,8 @@ class Population:
                     females[i % len(females)].child_count += 1
 
         # Filter native and immigrant females
-        native_females = [ind for ind in self.population if ind.sex == 'female' and ind.get_gene_value('immigrant_status') == 0.0 and 18 <= ind.age]
-        immigrant_females = [ind for ind in self.population if ind.sex == 'female' and ind.get_gene_value('immigrant_status') == 1.0 and 18 <= ind.age]
+        native_females = [ind for ind in self.population if ind.sex == 'female' and ind.get_gene_value('native') == 1.0 and 18 <= ind.age]
+        immigrant_females = [ind for ind in self.population if ind.sex == 'female' and ind.get_gene_value('native') == 0.0 and 18 <= ind.age]
 
         # Adjust child counts
         distribute_extra_children(native_females, native_fertility)
@@ -363,21 +417,26 @@ class Population:
         """Calculate population statistics, including sex distribution."""
         total = len(self.population)
         sexes = np.array([ind.sex for ind in self.population])
-        gene_values = np.array([ind.get_gene_value('immigrant_status') for ind in self.population])
+
+        natives = sum(ind.get_gene_value('native') == 1.0 for ind in self.population)
+        immigrants_1 = sum(ind.get_gene_value('immigrant_1') == 1.0 for ind in self.population)
+        immigrants_2 = sum(ind.get_gene_value('immigrant_2') == 1.0 for ind in self.population)
+        mixed = total - natives - immigrants_1 - immigrants_2
 
         males = np.sum(sexes == 'male')
         females = total - males
-        natives = np.sum(gene_values == 0.0)
-        immigrants = np.sum(gene_values == 1.0)
-        mixed = total - natives - immigrants
+
+        immigrant_percentage = ((immigrants_1 + immigrants_2 + mixed) / total) * 100
+
         return {
             "total_population": total,
             "native_population": natives,
-            "immigrant_population": immigrants,
+            "immigrant_1_population": immigrants_1,
+            "immigrant_2_population": immigrants_2,
             "mixed_population": mixed,
             "male_population": males,
             "female_population": females,
-            "immigrant_percentage": ((immigrants + mixed) / total) * 100,
+            "immigrant_percentage": immigrant_percentage,
             "avg_children_native": self.avg_children_native,
             "avg_children_immigrant": self.avg_children_immigrant,
             "avg_children_mixed": self.avg_children_mixed
@@ -412,7 +471,7 @@ def run_large_simulation():
 
         # Prepare data for plotting
         pyramid_data = prepare_age_sex_data(pop.population)
-        gene_values = [ind.get_gene_value('immigrant_status') for ind in pop.population]
+        gene_values = [ind.gene_group.calculate_percentages() for ind in pop.population]
 
         # Compute counts for max_count
         counts = (
@@ -423,9 +482,13 @@ def run_large_simulation():
         if counts_abs:
             max_count = max(max_count, max(counts_abs), max_count)
 
+        # For histogram, we may need to adjust the bins since we have multiple genes
+        # Here we can sum up the immigrant gene percentages
+        immigrant_percentages = [sum([gene_values[i].get('immigrant_1', 0), gene_values[i].get('immigrant_2', 0)]) for i in range(len(gene_values))]
+
         # Compute histogram counts for max_hist_count
-        bins = np.arange(0, 1.1, 0.1)  # Bins from 0 to 1 in steps of 0.1
-        hist, _ = np.histogram(gene_values, bins=bins)
+        bins = np.arange(0, 101, 10)  # Bins from 0 to 100 in steps of 10%
+        hist, _ = np.histogram(immigrant_percentages, bins=bins)
         max_hist_count = max(max_hist_count, max(hist), max_hist_count)
 
         # Store aggregated data
@@ -439,4 +502,3 @@ def run_large_simulation():
     max_hist_count = int(max_hist_count * 1.1)
 
     return stats, max_count, max_hist_count, avg_children_per_female_natives, avg_children_per_female_immigrants, avg_children_per_female_mixed, population_data, simulation_batch
-

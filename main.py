@@ -26,7 +26,8 @@ max_hist_count *= simulation_batch
 years = list(range(len(stats)))
 total_population = [stat['total_population'] * simulation_batch for stat in stats]
 native_population = [stat['native_population'] * simulation_batch for stat in stats]
-immigrant_population = [stat['immigrant_population'] * simulation_batch for stat in stats]
+immigrant_1_population = [stat['immigrant_1_population'] * simulation_batch for stat in stats]
+immigrant_2_population = [stat['immigrant_2_population'] * simulation_batch for stat in stats]
 mixed_population = [stat['mixed_population'] * simulation_batch for stat in stats]
 immigrant_percentage = [stat['immigrant_percentage'] for stat in stats]  # Percentages remain the same
 
@@ -76,7 +77,7 @@ app.layout = html.Div([
         ], style={"width": "48%", "display": "inline-block"})
     ], style={"display": "flex", "justify-content": "space-between"}),
 
-    # Bottom row with the histogram
+    # Bottom row with the histograms
     html.Div([
         dcc.Graph(
             id="immigrant-gene-histogram",
@@ -126,10 +127,17 @@ def create_population_breakdown(_):
     ))
     fig.add_trace(go.Scatter(
         x=years,
-        y=immigrant_population,
+        y=immigrant_1_population,
         mode="lines",
-        name="Immigrant Population",
+        name="Immigrant 1 Population",
         line=dict(dash='dot', color='red')
+    ))
+    fig.add_trace(go.Scatter(
+        x=years,
+        y=immigrant_2_population,
+        mode="lines",
+        name="Immigrant 2 Population",
+        line=dict(dash='dashdot', color='orange')
     ))
     fig.add_trace(go.Scatter(
         x=years,
@@ -159,7 +167,7 @@ def create_immigrant_percentage(_):
         x=years,
         y=immigrant_percentage,
         mode="lines",
-        name="Immigrant Percentage",
+        name="Immigrant & Mixed Percentage",
         line=dict(color='orange')
     ))
 
@@ -262,7 +270,7 @@ def update_age_sex_pyramid(hoverData):
 
     return fig
 
-# Callback for immigrant gene histogram
+# Callback for the immigrant gene histogram
 @app.callback(
     Output("immigrant-gene-histogram", "figure"),
     Input("population-trend", "hoverData")
@@ -274,30 +282,70 @@ def update_immigrant_gene_histogram(hoverData):
     else:
         year = 0  # Default to the first year if no hover data is available
 
-    gene_values = population_data[year]["gene_values"]
+    gene_values = population_data[year]["gene_values"]  # List of dicts with gene percentages
 
-    # Create histogram
-    bins = np.arange(0, 1.1, 0.1)  # Bins from 0 to 1 in steps of 0.1
-    hist, bin_edges = np.histogram(gene_values, bins=bins)
+    # Extract gene percentages for each gene type
+    native_values = [gv.get('native', 0) for gv in gene_values]
+    immigrant1_values = [gv.get('immigrant_1', 0) for gv in gene_values]
+    immigrant2_values = [gv.get('immigrant_2', 0) for gv in gene_values]
 
-    # Scale histogram counts
-    hist = hist * simulation_batch
-
-    # Prepare data for bar chart
-    bin_centers = (bin_edges[:-1] + bin_edges[1:]) / 2
+    # Create histogram traces for each gene type
     fig = go.Figure()
-    fig.add_trace(go.Bar(
-        x=bin_centers,
-        y=hist,
-        width=0.08,  # Adjust width to avoid bars touching
-        marker_color='purple'
+
+    # Plot Native gene histogram
+    fig.add_trace(go.Histogram(
+        x=native_values,  # Already in percentage
+        name="Native",
+        marker_color="blue",
+        opacity=0.5,
+        xbins=dict(
+            start=0,
+            end=100,
+            size=10
+        )
     ))
 
+    # Plot Immigrant 1 gene histogram
+    fig.add_trace(go.Histogram(
+        x=immigrant1_values,  # Already in percentage
+        name="Immigrant 1",
+        marker_color="red",
+        opacity=0.5,
+        xbins=dict(
+            start=0,
+            end=100,
+            size=10
+        )
+    ))
+
+    # Plot Immigrant 2 gene histogram
+    fig.add_trace(go.Histogram(
+        x=immigrant2_values,  # Already in percentage
+        name="Immigrant 2",
+        marker_color="orange",
+        opacity=0.5,
+        xbins=dict(
+            start=0,
+            end=100,
+            size=10
+        )
+    ))
+
+    # Overlay the histograms
     fig.update_layout(
         title=f"Immigrant Gene Value Distribution for Year {year}",
-        xaxis=dict(title="Immigrant Gene Value"),
-        yaxis=dict(title="Number of Individuals", range=[0, max_hist_count]),
-        hovermode="x"
+        xaxis=dict(
+            title="Gene Percentage (%)",
+            range=[0, 100],
+            dtick=10
+        ),
+        yaxis=dict(
+            title="Number of Individuals",
+            range=[0, max_hist_count/simulation_batch]
+        ),
+        barmode='overlay',  # Overlay histograms
+        hovermode="x unified",
+        legend=dict(title="Gene Types")
     )
 
     return fig
