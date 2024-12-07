@@ -14,6 +14,17 @@ immigrant_ratio = 0.062
 native_fertility = 1.26
 immigrant_fertility = 1.7
 
+# Global variables to hold simulation state
+pop = None
+population_data = {}
+stats = []
+avg_children_per_female_natives = []
+avg_children_per_female_immigrants = []
+avg_children_per_female_mixed = []
+max_count = 0
+max_hist_count = 0
+current_year = 0  # Tracks how many years have been simulated so far
+
 def generate_realistic_age(sex):
     """
     Generate a random age based on a realistic age distribution.
@@ -444,61 +455,59 @@ class Population:
 
 population_data = {}
 
-# Simulation with a starting population of 5.6 million
-def run_large_simulation():
+def init_large_simulation():
+    global pop, population_data, stats, avg_children_per_female_natives, avg_children_per_female_immigrants, avg_children_per_female_mixed, max_count, max_hist_count, current_year
 
+    # Reset all global variables
     pop = Population(total_population, immigrant_ratio, native_fertility, immigrant_fertility)
     pop.create_realistic_child_count()
+    population_data = {}
     stats = []
-
     avg_children_per_female_natives = []
     avg_children_per_female_immigrants = []
     avg_children_per_female_mixed = []
-
     max_count = 0
     max_hist_count = 0
+    current_year = 0
 
-    # Use tqdm for progress bar
-    for year in tqdm(range(years), desc="Simulating years"):
-        pop.simulate_year(net_migration)
-        stat = pop.get_population_statistics()
-        stats.append(stat)
+def run_large_simulation():
+    global pop, population_data, stats, avg_children_per_female_natives, avg_children_per_female_immigrants, avg_children_per_female_mixed, max_count, max_hist_count, current_year
 
-        # Collect average child counts
-        avg_children_per_female_natives.append(stat['avg_children_native'])
-        avg_children_per_female_immigrants.append(stat['avg_children_immigrant'])
-        avg_children_per_female_mixed.append(stat['avg_children_mixed'])
+    # Simulate one year
+    pop.simulate_year(net_migration)
+    stat = pop.get_population_statistics()
+    stats.append(stat)
 
-        # Prepare data for plotting
-        pyramid_data = prepare_age_sex_data(pop.population)
-        gene_values = [ind.gene_group.calculate_percentages() for ind in pop.population]
+    # Collect average child counts
+    avg_children_per_female_natives.append(stat['avg_children_native'])
+    avg_children_per_female_immigrants.append(stat['avg_children_immigrant'])
+    avg_children_per_female_mixed.append(stat['avg_children_mixed'])
 
-        # Compute counts for max_count
-        counts = (
-            pyramid_data['native_male_counts'] + pyramid_data['immigrant_male_counts'] +
-            pyramid_data['native_female_counts'] + pyramid_data['immigrant_female_counts']
-        )
-        counts_abs = [abs(count) for count in counts]
-        if counts_abs:
-            max_count = max(max_count, max(counts_abs), max_count)
+    # Prepare data for plotting
+    pyramid_data = prepare_age_sex_data(pop.population)
+    gene_values = [ind.gene_group.calculate_percentages() for ind in pop.population]
 
-        # For histogram, we may need to adjust the bins since we have multiple genes
-        # Here we can sum up the immigrant gene percentages
-        immigrant_percentages = [sum([gene_values[i].get('immigrant_1', 0), gene_values[i].get('immigrant_2', 0)]) for i in range(len(gene_values))]
+    # Compute counts for max_count
+    counts = (
+        pyramid_data['native_male_counts'] + pyramid_data['immigrant_male_counts'] +
+        pyramid_data['native_female_counts'] + pyramid_data['immigrant_female_counts']
+    )
+    counts_abs = [abs(count) for count in counts]
+    if counts_abs:
+        max_count = max(max_count, max(counts_abs))
 
-        # Compute histogram counts for max_hist_count
-        bins = np.arange(0, 101, 10)  # Bins from 0 to 100 in steps of 10%
-        hist, _ = np.histogram(immigrant_percentages, bins=bins)
-        max_hist_count = max(max_hist_count, max(hist), max_hist_count)
+    # Compute histogram data
+    immigrant_percentages = [sum([g.get('immigrant_1', 0), g.get('immigrant_2', 0)]) for g in gene_values]
+    bins = np.arange(0, 101, 10)
+    hist, _ = np.histogram(immigrant_percentages, bins=bins)
+    max_hist_count = max(max_hist_count, max(hist))
 
-        # Store aggregated data
-        population_data[year] = {
-            "pyramid_data": pyramid_data,
-            "gene_values": gene_values
-        }
+    population_data[current_year] = {
+        "pyramid_data": pyramid_data,
+        "gene_values": gene_values
+    }
 
-    # Add buffer to max_count and max_hist_count
-    max_count = int(max_count * 1.1)
-    max_hist_count = int(max_hist_count * 1.1)
+    current_year += 1
 
-    return stats, max_count, max_hist_count, avg_children_per_female_natives, avg_children_per_female_immigrants, avg_children_per_female_mixed, population_data, simulation_batch
+    # Return just the current year's results if desired
+    return stat, max_count, max_hist_count, avg_children_per_female_natives[-1], avg_children_per_female_immigrants[-1], avg_children_per_female_mixed[-1], population_data[current_year-1], simulation_batch
