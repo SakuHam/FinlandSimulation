@@ -7,7 +7,7 @@ from tqdm import tqdm
 
 # Simulation parameters
 years = 100
-simulation_batch = 1000
+simulation_batch = 100
 net_migration = int(56000 / simulation_batch)
 total_population = int(5600000 / simulation_batch)
 immigrant_ratio = 0.062
