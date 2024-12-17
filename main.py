@@ -6,7 +6,7 @@ from dash import dcc, html, Input, Output
 import plotly.graph_objects as go
 import sim1  # Importing the simulation module
 
-# Run the simulation once
+# Run Monte Carlo simulations
 (
     stats,
     max_count,
@@ -15,21 +15,19 @@ import sim1  # Importing the simulation module
     avg_children_per_female_immigrants,
     avg_children_per_female_mixed,
     population_data,
-    simulation_batch  # Include simulation_batch in the outputs
-) = sim1.run_large_simulation()
+    simulation_batch
+) = sim1.monte_carlo_simulations(10)
 
-# Scale max_count and max_hist_count
-max_count *= simulation_batch
-max_hist_count *= simulation_batch
+# Now 'stats', 'avg_children_per_female_*', and other outputs are averages across the 10 runs.
+# The rest of the code remains the same, using these averaged values.
 
-# Prepare data for plotting
 years = list(range(len(stats)))
 total_population = [stat['total_population'] * simulation_batch for stat in stats]
 native_population = [stat['native_population'] * simulation_batch for stat in stats]
 immigrant_1_population = [stat['immigrant_1_population'] * simulation_batch for stat in stats]
 immigrant_2_population = [stat['immigrant_2_population'] * simulation_batch for stat in stats]
 mixed_population = [stat['mixed_population'] * simulation_batch for stat in stats]
-immigrant_percentage = [stat['immigrant_percentage'] for stat in stats]  # Percentages remain the same
+immigrant_percentage = [stat['immigrant_percentage'] for stat in stats]  # percentages can be averaged directly
 
 # Dash app initialization
 app = dash.Dash(__name__)
@@ -203,7 +201,8 @@ def update_age_sex_pyramid(hoverData):
     # Calculate max count for axis scaling
     max_male = max([abs(count) for count in scaled_native_male_counts + scaled_immigrant_male_counts])
     max_female = max([abs(count) for count in scaled_native_female_counts + scaled_immigrant_female_counts])
-    max_pyramid_count = max(max_male, max_female)
+#    max_pyramid_count = max(max_male, max_female)
+    max_pyramid_count = 300000
 
     fig = go.Figure()
 
@@ -340,7 +339,7 @@ def update_immigrant_gene_histogram(hoverData):
         ),
         yaxis=dict(
             title="Number of Individuals",
-            range=[0, max_hist_count]
+            range=[0, max_hist_count*simulation_batch]
         ),
         barmode='group',  # Changed from 'overlay' to 'group' for side-by-side bars
         hovermode="x unified",

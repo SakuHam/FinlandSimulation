@@ -4,10 +4,11 @@ import dash
 from dash import dcc, html, Input, Output
 import plotly.graph_objects as go
 from tqdm import tqdm
+from joblib import Parallel, delayed
 
 # Simulation parameters
 years = 100
-simulation_batch = 100
+simulation_batch = 1000
 net_migration = int(56000 / simulation_batch)
 total_population = int(5600000 / simulation_batch)
 immigrant_ratio = 0.062
@@ -502,3 +503,71 @@ def run_large_simulation():
     max_hist_count = int(max_hist_count * 1.1)
 
     return stats, max_count, max_hist_count, avg_children_per_female_natives, avg_children_per_female_immigrants, avg_children_per_female_mixed, population_data, simulation_batch
+
+def monte_carlo_simulations(num_simulations):
+    # Run multiple simulations in parallel
+    results = Parallel(n_jobs=-1)(
+        delayed(run_large_simulation)()
+        for _ in range(num_simulations)
+    )
+
+    # `results` is a list of tuples from run_large_simulation(), e.g.:
+    # [(stats, max_count, max_hist_count, avg_native, avg_immigrant, avg_mixed, population_data, simulation_batch), ...]
+
+    # Unpack all results by category
+    all_stats = [r[0] for r in results]
+    all_max_count = [r[1] for r in results]
+    all_max_hist_count = [r[2] for r in results]
+    all_avg_natives = [r[3] for r in results]
+    all_avg_immigrants = [r[4] for r in results]
+    all_avg_mixed = [r[5] for r in results]
+    all_population_data = [r[6] for r in results]
+    all_simulation_batch = [r[7] for r in results]
+
+    # Average scalar values
+    avg_max_count = np.mean(all_max_count)
+    avg_max_hist_count = np.mean(all_max_hist_count)
+    avg_simulation_batch = int(np.mean(all_simulation_batch))
+
+    # The fertility arrays (avg_children_per_female_...) are lists of yearly values per simulation.
+    # We can average them element-wise:
+    avg_children_per_female_natives = np.mean(all_avg_natives, axis=0).tolist()
+    avg_children_per_female_immigrants = np.mean(all_avg_immigrants, axis=0).tolist()
+    avg_children_per_female_mixed = np.mean(all_avg_mixed, axis=0).tolist()
+
+    # `stats` is a list of yearly dicts for each simulation. We need to average each numeric key across simulations.
+    # Assume all simulations have the same length of stats and same keys.
+    num_years = len(all_stats[0])
+    keys = all_stats[0][0].keys()
+    avg_stats = []
+    for y in range(num_years):
+        # Extract the y-th year's dict from each simulation
+        yearly_values = [sim[y] for sim in all_stats]
+
+        # Average each numeric key
+        avg_year_dict = {}
+        for k in keys:
+            vals = [d[k] for d in yearly_values]
+            if all(isinstance(v, (int, float)) for v in vals):
+                avg_year_dict[k] = float(np.mean(vals))
+            else:
+                # If there's non-numeric data, handle accordingly or skip
+                avg_year_dict[k] = yearly_values[0][k]
+        avg_stats.append(avg_year_dict)
+
+    # For population_data, which is large and complex, you may choose to:
+    # - Just return one of them,
+    # - Or implement averaging if it makes sense.
+    # Here, we return the first one's population_data for demonstration.
+    avg_population_data = all_population_data[0]
+
+    return (
+        avg_stats,
+        avg_max_count,
+        avg_max_hist_count,
+        avg_children_per_female_natives,
+        avg_children_per_female_immigrants,
+        avg_children_per_female_mixed,
+        avg_population_data,
+        avg_simulation_batch
+    )
