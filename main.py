@@ -7,18 +7,18 @@ import plotly.graph_objects as go
 import sim1  # Importing the simulation module
 
 # Run Monte Carlo simulations
-(
-    stats,
-    min_stats,
-    max_stats,
-    max_count,
-    max_hist_count,
-    avg_children_per_female_natives,
-    avg_children_per_female_immigrants,
-    avg_children_per_female_mixed,
-    population_data,
-    simulation_batch
-) = sim1.monte_carlo_simulations(10)
+results_by_immigration = sim1.monte_carlo_simulations(10)
+
+stats = results_by_immigration[56000]["avg_stats"]
+min_stats = results_by_immigration[56000]["min_stats"]
+max_stats = results_by_immigration[56000]["max_stats"]
+max_count = results_by_immigration[56000]["avg_max_count"]
+max_hist_count = results_by_immigration[56000]["avg_max_hist_count"]
+avg_children_per_female_natives = results_by_immigration[56000]["avg_children_per_female_natives"]
+avg_children_per_female_immigrants = results_by_immigration[56000]["avg_children_per_female_immigrants"]
+avg_children_per_female_mixed = results_by_immigration[56000]["avg_children_per_female_mixed"]
+population_data = results_by_immigration[56000]["avg_population_data"]
+simulation_batch = results_by_immigration[56000]["avg_simulation_batch"]
 
 
 # Now 'stats', 'avg_children_per_female_*', and other outputs are averages across the 10 runs.
@@ -220,10 +220,10 @@ def update_age_sex_pyramid(hoverData):
     pyramid_data = population_data[year]["pyramid_data"]
 
     # Scale counts by simulation_batch (no negation)
-    scaled_native_male_counts = [count * simulation_batch for count in pyramid_data["native_male_counts"]]
-    scaled_immigrant_male_counts = [count * simulation_batch for count in pyramid_data["immigrant_male_counts"]]
-    scaled_native_female_counts = [count * simulation_batch for count in pyramid_data["native_female_counts"]]
-    scaled_immigrant_female_counts = [count * simulation_batch for count in pyramid_data["immigrant_female_counts"]]
+    scaled_native_male_counts = [count * simulation_batch for count in pyramid_data[1]]
+    scaled_immigrant_male_counts = [count * simulation_batch for count in pyramid_data[2]]
+    scaled_native_female_counts = [count * simulation_batch for count in pyramid_data[3]]
+    scaled_immigrant_female_counts = [count * simulation_batch for count in pyramid_data[4]]
 
     # Calculate max count for axis scaling
     max_male = max([abs(count) for count in scaled_native_male_counts + scaled_immigrant_male_counts])
@@ -236,7 +236,7 @@ def update_age_sex_pyramid(hoverData):
     # Plot natives first to have immigrants on the outside
     # Males (negative counts)
     fig.add_trace(go.Bar(
-        y=pyramid_data["age_groups"],
+        y=pyramid_data[0],
         x=scaled_native_male_counts,
         orientation="h",
         name="Native Males",
@@ -246,7 +246,7 @@ def update_age_sex_pyramid(hoverData):
         legendgroup='Males'
     ))
     fig.add_trace(go.Bar(
-        y=pyramid_data["age_groups"],
+        y=pyramid_data[0],
         x=scaled_immigrant_male_counts,
         orientation="h",
         name="Immigrant Males",
@@ -258,7 +258,7 @@ def update_age_sex_pyramid(hoverData):
     ))
     # Females (positive counts)
     fig.add_trace(go.Bar(
-        y=pyramid_data["age_groups"],
+        y=pyramid_data[0],
         x=scaled_native_female_counts,
         orientation="h",
         name="Native Females",
@@ -268,7 +268,7 @@ def update_age_sex_pyramid(hoverData):
         legendgroup='Females'
     ))
     fig.add_trace(go.Bar(
-        y=pyramid_data["age_groups"],
+        y=pyramid_data[0],
         x=scaled_immigrant_female_counts,
         orientation="h",
         name="Immigrant Females",

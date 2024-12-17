@@ -10,14 +10,13 @@
         .charts-row {
             display: flex;
             justify-content: space-between;
-            gap: 10px; /* spacing between charts */
+            gap: 10px;
         }
         .chart {
-            flex: 1;             /* Each chart takes up equal space */
-            min-width: 300px;    /* Ensure charts remain readable at smaller widths */
-            height: 400px;       /* Adjust height as needed */
+            flex: 1;
+            min-width: 300px;
+            height: 400px;
         }
-        /* Make sure each chart div has a set height so that charts don't collapse */
         .chart > div {
             width: 100%;
             height: 100%;
@@ -27,178 +26,109 @@
 <body>
     <h1>Population Simulation Dashboard</h1>
 
-    <!-- First row of charts side by side -->
+    <!-- Dropdown to select scenario -->
+    <label for="scenario-select">Select Scenario:</label>
+    <select id="scenario-select"></select>
+
+    <!-- First row of charts -->
     <div class="charts-row">
         <div class="chart" id="population-trend"></div>
         <div class="chart" id="population-breakdown"></div>
         <div class="chart" id="immigrant-percentage"></div>
     </div>
 
-    <!-- Fertility chart below -->
+    <!-- Additional charts -->
     <div class="chart" id="fertility-chart" style="height:400px;"></div>
-
-    <!-- Age-sex pyramid -->
     <div class="chart" id="age-sex-pyramid" style="height:400px;"></div>
-
-    <!-- Gene histogram -->
     <div class="chart" id="immigrant-gene-histogram" style="height:400px;"></div>
 
     <script>
-    let globalData;
+    let globalData = {};
+    let selectedScenario;
 
-    fetch('data.json')
+    // Fetch all scenario data
+    fetch('all_scenarios_data.json')
         .then(response => response.json())
         .then(data => {
             globalData = data;
+            const scenarioSelect = document.getElementById('scenario-select');
 
-            // Total Population Trend with min/max band
-            // We'll plot three traces:
-            // 1. Average total population (line+markers)
-            // 2. Min total population (invisible line)
-            // 3. Max total population (fill='tonexty' to create a band)
-            let totalPopTraces = [
-                {
-                    x: data.years,
-                    y: data.minTotalPopulation,
-                    mode: 'lines',
-                    line: { width: 0, color: 'green' },
-                    name: 'Min Total Population',
-                    showlegend: false
-                },
-                {
-                    x: data.years,
-                    y: data.maxTotalPopulation,
-                    mode: 'lines',
-                    fill: 'tonexty',
-                    fillcolor: 'rgba(0,128,0,0.2)',
-                    line: { width: 0, color: 'green' },
-                    name: 'Max Total Population',
-                    showlegend: false
-                },
-                {
-                    x: data.years,
-                    y: data.totalPopulation,
-                    mode: 'lines+markers',
-                    name: 'Avg Total Population',
-                    line: { color: 'green', width: 2 }
-                }
-            ];
-
-            Plotly.newPlot('population-trend', totalPopTraces, {
-                title: 'Total Population Over Time (with Min/Max)',
-                xaxis: { title: 'Year' },
-                yaxis: { title: 'Population' }
+            // Populate the dropdown with scenario keys
+            Object.keys(data).forEach(scenarioKey => {
+                const option = document.createElement('option');
+                option.value = scenarioKey;
+                option.textContent = `Scenario ${scenarioKey}`;
+                scenarioSelect.appendChild(option);
             });
 
-            // Population Breakdown
-            Plotly.newPlot('population-breakdown', [
-                { x: data.years, y: data.nativePopulation, mode: 'lines', name: 'Native', line: { color: 'blue' } },
-                { x: data.years, y: data.immigrant1Population, mode: 'lines', name: 'Immigrant 1', line: { color: 'red' } },
-                { x: data.years, y: data.immigrant2Population, mode: 'lines', name: 'Immigrant 2', line: { color: 'orange' } },
-                { x: data.years, y: data.mixedPopulation, mode: 'lines', name: 'Mixed', line: { color: 'purple' } }
-            ], {
-                title: 'Population Breakdown Over Time',
-                xaxis: { title: 'Year' },
-                yaxis: { title: 'Population' }
-            });
+            // Set initial scenario and render data
+            selectedScenario = Object.keys(data)[0];
+            renderScenario(selectedScenario);
 
-            // Immigrant Percentage Over Time
-            Plotly.newPlot('immigrant-percentage', [{
-                x: data.years,
-                y: data.immigrantPercentage,
-                mode: 'lines',
-                name: 'Immigrant Percentage',
-                line: { color: 'orange' }
-            }], {
-                title: 'Immigrant Percentage Over Time',
-                xaxis: { title: 'Year' },
-                yaxis: { title: 'Percentage (%)' }
-            });
-
-            // Fertility Chart (just the average curves)
-            Plotly.newPlot('fertility-chart', [
-                {
-                    x: data.years,
-                    y: data.avgChildrenPerFemaleNatives,
-                    mode: 'lines',
-                    name: 'Native Females',
-                    line: { color: 'blue' }
-                },
-                {
-                    x: data.years,
-                    y: data.avgChildrenPerFemaleImmigrants,
-                    mode: 'lines',
-                    name: 'Immigrant Females',
-                    line: { color: 'red' }
-                },
-                {
-                    x: data.years,
-                    y: data.avgChildrenPerFemaleMixed,
-                    mode: 'lines',
-                    name: 'Mixed Females',
-                    line: { color: 'purple' }
-                }
-            ], {
-                title: 'Average Children per Female Over Lifetime',
-                xaxis: { title: 'Year' },
-                yaxis: { title: 'Average Children' }
-            });
-
-            // Initial update for pyramid and histogram
-            updatePyramidAndHistogram(0, data);
-
-            // Add hover event on population-trend to update pyramid and histogram
-            const populationTrendDiv = document.getElementById('population-trend');
-            populationTrendDiv.on('plotly_hover', function(event) {
-                if (event && event.points && event.points.length > 0) {
-                    const hoveredYear = event.points[0].x;
-                    updatePyramidAndHistogram(hoveredYear, globalData);
-                }
+            // Event listener for scenario change
+            scenarioSelect.addEventListener('change', (event) => {
+                selectedScenario = event.target.value;
+                renderScenario(selectedScenario);
             });
         })
         .catch(error => console.error('Error loading data:', error));
 
-        function updatePyramidAndHistogram(year, data) {
-            const pyramidData = data.pyramidData[year]; 
-            if (!pyramidData) {
-                console.warn(`No pyramid data for year ${year}`);
-                return;
-            }
+    function renderScenario(scenarioKey) {
+        const data = globalData[scenarioKey];
+        if (!data) return;
 
-            // Pyramid update
+        // Total Population Trend with Min/Max Band
+        const totalPopTraces = [
+            { x: data.years, y: data.minTotalPopulation, mode: 'lines', line: { width: 0, color: 'green' }, showlegend: false },
+            { x: data.years, y: data.maxTotalPopulation, mode: 'lines', fill: 'tonexty', fillcolor: 'rgba(0,128,0,0.2)', line: { width: 0, color: 'green' }, showlegend: false },
+            { x: data.years, y: data.totalPopulation, mode: 'lines+markers', name: 'Avg Total Population', line: { color: 'green', width: 2 } }
+        ];
+        Plotly.newPlot('population-trend', totalPopTraces, { title: 'Total Population Over Time', xaxis: { title: 'Year' }, yaxis: { title: 'Population' } });
+
+        // Population Breakdown
+        Plotly.newPlot('population-breakdown', [
+            { x: data.years, y: data.nativePopulation, mode: 'lines', name: 'Native', line: { color: 'blue' } },
+            { x: data.years, y: data.immigrant1Population, mode: 'lines', name: 'Immigrant 1', line: { color: 'red' } },
+            { x: data.years, y: data.immigrant2Population, mode: 'lines', name: 'Immigrant 2', line: { color: 'orange' } },
+            { x: data.years, y: data.mixedPopulation, mode: 'lines', name: 'Mixed', line: { color: 'purple' } }
+        ], { title: 'Population Breakdown Over Time', xaxis: { title: 'Year' }, yaxis: { title: 'Population' } });
+
+        // Immigrant Percentage Over Time
+        Plotly.newPlot('immigrant-percentage', [{ x: data.years, y: data.immigrantPercentage, mode: 'lines', name: 'Immigrant %', line: { color: 'orange' } }], {
+            title: 'Immigrant Percentage Over Time',
+            xaxis: { title: 'Year' }, yaxis: { title: 'Percentage (%)' }
+        });
+
+        // Fertility Chart
+        Plotly.newPlot('fertility-chart', [
+            { x: data.years, y: data.avgChildrenPerFemaleNatives, mode: 'lines', name: 'Native Females', line: { color: 'blue' } },
+            { x: data.years, y: data.avgChildrenPerFemaleImmigrants, mode: 'lines', name: 'Immigrant Females', line: { color: 'red' } },
+            { x: data.years, y: data.avgChildrenPerFemaleMixed, mode: 'lines', name: 'Mixed Females', line: { color: 'purple' } }
+        ], { title: 'Average Children per Female', xaxis: { title: 'Year' }, yaxis: { title: 'Avg Children' } });
+
+        // Initial Pyramid and Histogram
+        updatePyramidAndHistogram(0, data);
+
+        // Update Pyramid on Hover
+        document.getElementById('population-trend').on('plotly_hover', function(event) {
+            if (event && event.points && event.points.length > 0) {
+                updatePyramidAndHistogram(event.points[0].x, data);
+            }
+        });
+    }
+
+    function updatePyramidAndHistogram(year, data) {
+        const pyramidData = data.pyramidData[year];
+        if (pyramidData) {
             const ageSexData = [
                 { y: pyramidData.ageGroups, x: pyramidData.nativeMaleCounts, type: 'bar', name: 'Native Males', orientation: 'h', marker: { color: 'blue' } },
                 { y: pyramidData.ageGroups, x: pyramidData.immigrantMaleCounts, type: 'bar', name: 'Immigrant Males', orientation: 'h', marker: { color: 'lightblue' } },
                 { y: pyramidData.ageGroups, x: pyramidData.nativeFemaleCounts, type: 'bar', name: 'Native Females', orientation: 'h', marker: { color: 'red' } },
                 { y: pyramidData.ageGroups, x: pyramidData.immigrantFemaleCounts, type: 'bar', name: 'Immigrant Females', orientation: 'h', marker: { color: 'pink' } }
             ];
-
-            Plotly.react('age-sex-pyramid', ageSexData, {
-                title: `Age-Sex Pyramid (Year ${year})`,
-                xaxis: { title: 'Population', range: [-300000, 300000] },
-                yaxis: { title: 'Age Group', autorange: 'reversed' },
-                barmode: 'relative'
-            });
-
-            // Gene histogram data
-            const geneData = data.geneHistogramData[year];  
-            if (geneData) {
-                const geneTraces = [
-                    { x: geneData.bins, y: geneData.nativeGeneCounts, type: 'bar', name: 'Native', marker: { color: 'blue' } },
-                    { x: geneData.bins, y: geneData.immigrant1GeneCounts, type: 'bar', name: 'Immigrant 1', marker: { color: 'red' } },
-                    { x: geneData.bins, y: geneData.immigrant2GeneCounts, type: 'bar', name: 'Immigrant 2', marker: { color: 'orange' } }
-                ];
-
-                Plotly.react('immigrant-gene-histogram', geneTraces, {
-                    title: `Immigrant Gene Distribution (Year ${year})`,
-                    xaxis: { title: 'Gene Percentage (%)' },
-                    yaxis: { title: 'Count' },
-                    barmode: 'group'
-                });
-            } else {
-                console.warn(`No gene histogram data for year ${year}`);
-            }
+            Plotly.react('age-sex-pyramid', ageSexData, { title: `Age-Sex Pyramid (Year ${year})`, barmode: 'relative', xaxis: { title: 'Population' }, yaxis: { autorange: 'reversed' } });
         }
+    }
     </script>
 </body>
 </html>

@@ -4,7 +4,23 @@ import dash
 from dash import dcc, html, Input, Output
 import plotly.graph_objects as go
 from tqdm import tqdm
-from joblib import Parallel, delayed
+from joblib import Parallel, delayed, parallel_backend
+
+# Define integer constants for keys
+AGE_GROUPS_KEY = 0
+NATIVE_MALE_COUNTS_KEY = 1
+IMMIGRANT_MALE_COUNTS_KEY = 2
+NATIVE_FEMALE_COUNTS_KEY = 3
+IMMIGRANT_FEMALE_COUNTS_KEY = 4
+
+# Define a mapping from key constants back to their string names
+KEY_TO_STRING = {
+    AGE_GROUPS_KEY: "age_groups",
+    NATIVE_MALE_COUNTS_KEY: "native_male_counts",
+    IMMIGRANT_MALE_COUNTS_KEY: "immigrant_male_counts",
+    NATIVE_FEMALE_COUNTS_KEY: "native_female_counts",
+    IMMIGRANT_FEMALE_COUNTS_KEY: "immigrant_female_counts"
+}
 
 # Simulation parameters
 years = 100
@@ -69,15 +85,12 @@ def generate_realistic_age(sex):
         0.000
     ])
 
-    # Normalize weights
     weights = weights_males if sex == 'male' else weights_females
     weights /= weights.sum()
-
-    # Randomly sample an age
     return np.random.choice(age_groups, p=weights)
 
 def prepare_age_sex_data(population):
-    """Prepare age-sex pyramid data, including natives and immigrants separately."""
+    """Prepare age-sex pyramid data, including natives and immigrants, using integer keys."""
     age_groups = list(range(0, 101, 5))
     native_male_counts = np.zeros(len(age_groups))
     immigrant_male_counts = np.zeros(len(age_groups))
@@ -103,11 +116,11 @@ def prepare_age_sex_data(population):
         immigrant_female_counts[idx] = np.sum(age_mask & immigrant_mask & female_mask)
 
     return {
-        "age_groups": age_groups,
-        "native_male_counts": native_male_counts.tolist(),
-        "immigrant_male_counts": immigrant_male_counts.tolist(),
-        "native_female_counts": native_female_counts.tolist(),
-        "immigrant_female_counts": immigrant_female_counts.tolist()
+        AGE_GROUPS_KEY: age_groups,
+        NATIVE_MALE_COUNTS_KEY: native_male_counts.tolist(),
+        IMMIGRANT_MALE_COUNTS_KEY: immigrant_male_counts.tolist(),
+        NATIVE_FEMALE_COUNTS_KEY: native_female_counts.tolist(),
+        IMMIGRANT_FEMALE_COUNTS_KEY: immigrant_female_counts.tolist()
     }
 
 def get_death_chance(age):
@@ -252,7 +265,7 @@ class Individual:
                     f"Offspring gene values sum to {total_gene_value}, which is not near 1.0. "
                     f"Genes: {offspring_genes}"
                 )
-            
+
             gene_group = GeneGroup(genes=offspring_genes)
             self.child_count += 1
             self.partner.child_count += 1  # Also increment the partner's child count
@@ -273,7 +286,7 @@ class Population:
         initial_native_count = int(total_population * (1 - immigrant_ratio))
         initial_immigrant_count = total_population - initial_native_count
 
-        # Create initial native population with realistic ages
+        # Create initial native population
         for _ in range(initial_native_count):
             sex = np.random.choice(['male', 'female'])
             age = generate_realistic_age(sex)
@@ -287,7 +300,7 @@ class Population:
             ))
             self.next_id += 1
 
-        # Create initial immigrant population with realistic ages
+        # Create initial immigrant population
         for _ in range(initial_immigrant_count):
             sex = np.random.choice(['male', 'female'])
             age = generate_realistic_age(sex)
@@ -296,7 +309,6 @@ class Population:
             # Assign 'immigrant_1' or 'immigrant_2' with probabilities 20% and 80%
             immigrant_gene = np.random.choice(['immigrant_1', 'immigrant_2'], p=[0.2, 0.8])
             gene_group.add_gene(immigrant_gene, 1.0)
-            # Ensure the other immigrant gene is set to 0.0
             other_immigrant_gene = 'immigrant_1' if immigrant_gene == 'immigrant_2' else 'immigrant_2'
             gene_group.add_gene(other_immigrant_gene, 0.0)
             self.population.append(Individual(
@@ -315,7 +327,7 @@ class Population:
             if alive:
                 new_population.append(individual)
             else:
-                # If the individual is a female, store her child count and immigration status
+                # If the individual is female, store her child count based on immigrant/native status
                 if individual.sex == 'female':
                     if individual.get_gene_value('native') == 1.0:
                         self.deceased_females_natives.append(individual.child_count)
@@ -383,10 +395,6 @@ class Population:
         """Adjust child counts to ensure realistic averages for natives and immigrants."""
 
         def compute_child_count_average(females, target_avg):
-            """
-            Compute the required extra children to reach the target average.
-            Returns the number of extra children needed.
-            """
             current_total = sum(ind.child_count for ind in females)
             required_total = int(len(females) * target_avg)
             extra_children_needed = required_total - current_total
@@ -399,18 +407,14 @@ class Population:
                 if extra_children_needed <= 0:
                     break
 
-                # Shuffle the list for fairness
                 random.shuffle(females)
 
-                # Add children incrementally
                 for i in range(extra_children_needed):
                     females[i % len(females)].child_count += 1
 
-        # Filter native and immigrant females
         native_females = [ind for ind in self.population if ind.sex == 'female' and ind.get_gene_value('native') == 1.0 and 18 <= ind.age]
         immigrant_females = [ind for ind in self.population if ind.sex == 'female' and ind.get_gene_value('native') == 0.0 and 18 <= ind.age]
 
-        # Adjust child counts
         distribute_extra_children(native_females, native_fertility)
         distribute_extra_children(immigrant_females, immigrant_fertility)
 
@@ -445,9 +449,7 @@ class Population:
 
 population_data = {}
 
-# Simulation with a starting population of 5.6 million
-def run_large_simulation():
-
+def run_large_simulation(net_migration):
     pop = Population(total_population, immigrant_ratio, native_fertility, immigrant_fertility)
     pop.create_realistic_child_count()
     stats = []
@@ -459,13 +461,11 @@ def run_large_simulation():
     max_count = 0
     max_hist_count = 0
 
-    # Use tqdm for progress bar
-    for year in tqdm(range(years), desc="Simulating years"):
+    for year in tqdm(range(years), desc=f"Simulating years with net_migration={net_migration * simulation_batch}"):
         pop.simulate_year(net_migration)
         stat = pop.get_population_statistics()
         stats.append(stat)
 
-        # Collect average child counts
         avg_children_per_female_natives.append(stat['avg_children_native'])
         avg_children_per_female_immigrants.append(stat['avg_children_immigrant'])
         avg_children_per_female_mixed.append(stat['avg_children_mixed'])
@@ -474,114 +474,103 @@ def run_large_simulation():
         pyramid_data = prepare_age_sex_data(pop.population)
         gene_values = [ind.gene_group.calculate_percentages() for ind in pop.population]
 
-        # Compute counts for max_count
         counts = (
-            pyramid_data['native_male_counts'] + pyramid_data['immigrant_male_counts'] +
-            pyramid_data['native_female_counts'] + pyramid_data['immigrant_female_counts']
+            pyramid_data[NATIVE_MALE_COUNTS_KEY] + pyramid_data[IMMIGRANT_MALE_COUNTS_KEY] +
+            pyramid_data[NATIVE_FEMALE_COUNTS_KEY] + pyramid_data[IMMIGRANT_FEMALE_COUNTS_KEY]
         )
         counts_abs = [abs(count) for count in counts]
         if counts_abs:
             max_count = max(max_count, max(counts_abs), max_count)
 
-        # For histogram, we may need to adjust the bins since we have multiple genes
-        # Here we can sum up the immigrant gene percentages
-        immigrant_percentages = [sum([gene_values[i].get('immigrant_1', 0), gene_values[i].get('immigrant_2', 0)]) for i in range(len(gene_values))]
-
-        # Compute histogram counts for max_hist_count
-        bins = np.arange(0, 101, 10)  # Bins from 0 to 100 in steps of 10%
+        immigrant_percentages = [sum([gv.get('immigrant_1', 0), gv.get('immigrant_2', 0)]) for gv in gene_values]
+        bins = np.arange(0, 101, 10) 
         hist, _ = np.histogram(immigrant_percentages, bins=bins)
         max_hist_count = max(max_hist_count, max(hist), max_hist_count)
 
-        # Store aggregated data
         population_data[year] = {
             "pyramid_data": pyramid_data,
             "gene_values": gene_values
         }
 
-    # Add buffer to max_count and max_hist_count
     max_count = int(max_count * 1.1)
     max_hist_count = int(max_hist_count * 1.1)
 
     return stats, max_count, max_hist_count, avg_children_per_female_natives, avg_children_per_female_immigrants, avg_children_per_female_mixed, population_data, simulation_batch
 
-def monte_carlo_simulations(num_simulations):
-    # Run multiple simulations in parallel
-    results = Parallel(n_jobs=-1)(
-        delayed(run_large_simulation)()
-        for _ in range(num_simulations)
-    )
+def monte_carlo_simulations(num_simulations, net_migration_values=[56000, 40000, 25000]):
+    """
+    Run multiple sets of Monte Carlo simulations for different net_migration values.
+    Returns a dictionary keyed by the net_migration scenario with the results.
+    """
+    results_by_immigration = {}
 
-    # `results` is a list of tuples: 
-    # (stats, max_count, max_hist_count, avg_native, avg_immigrant, avg_mixed, population_data, simulation_batch)
+    for nm_val in net_migration_values:
+        nm_per_batch = int(nm_val / simulation_batch)
 
-    all_stats = [r[0] for r in results]
-    all_max_count = [r[1] for r in results]
-    all_max_hist_count = [r[2] for r in results]
-    all_avg_natives = [r[3] for r in results]
-    all_avg_immigrants = [r[4] for r in results]
-    all_avg_mixed = [r[5] for r in results]
-    all_population_data = [r[6] for r in results]
-    all_simulation_batch = [r[7] for r in results]
+        results = Parallel(n_jobs=6)(
+            delayed(run_large_simulation)(nm_per_batch)
+            for _ in range(num_simulations)
+        )
 
-    # Average scalar values
-    avg_max_count = np.mean(all_max_count)
-    avg_max_hist_count = np.mean(all_max_hist_count)
-    avg_simulation_batch = int(np.mean(all_simulation_batch))
+        all_stats = [r[0] for r in results]
+        all_max_count = [r[1] for r in results]
+        all_max_hist_count = [r[2] for r in results]
+        all_avg_natives = [r[3] for r in results]
+        all_avg_immigrants = [r[4] for r in results]
+        all_avg_mixed = [r[5] for r in results]
+        all_population_data = [r[6] for r in results]
+        all_simulation_batch = [r[7] for r in results]
 
-    # Average yearly fertility arrays
-    avg_children_per_female_natives = np.mean(all_avg_natives, axis=0).tolist()
-    avg_children_per_female_immigrants = np.mean(all_avg_immigrants, axis=0).tolist()
-    avg_children_per_female_mixed = np.mean(all_avg_mixed, axis=0).tolist()
+        avg_max_count = np.mean(all_max_count)
+        avg_max_hist_count = np.mean(all_max_hist_count)
+        avg_simulation_batch = int(np.mean(all_simulation_batch))
 
-    # Each element of all_stats is a list of yearly dicts with keys like 
-    # "total_population", "native_population", etc.
-    num_years = len(all_stats[0])
-    keys = all_stats[0][0].keys()
+        avg_children_per_female_natives = np.mean(all_avg_natives, axis=0).tolist()
+        avg_children_per_female_immigrants = np.mean(all_avg_immigrants, axis=0).tolist()
+        avg_children_per_female_mixed = np.mean(all_avg_mixed, axis=0).tolist()
 
-    avg_stats = []
-    min_stats = []
-    max_stats = []
+        num_years = len(all_stats[0])
+        keys = all_stats[0][0].keys()
 
-    for y in range(num_years):
-        # Extract year y data from each simulation
-        yearly_values_list = [sim[y] for sim in all_stats]
+        avg_stats = []
+        min_stats = []
+        max_stats = []
 
-        # Prepare dicts for this year
-        avg_year_dict = {}
-        min_year_dict = {}
-        max_year_dict = {}
+        for y in range(num_years):
+            yearly_values_list = [sim[y] for sim in all_stats]
 
-        for k in keys:
-            # Extract the list of values for key k across all simulations
-            vals = [d[k] for d in yearly_values_list]
+            avg_year_dict = {}
+            min_year_dict = {}
+            max_year_dict = {}
 
-            # Check if values are numeric
-            if all(isinstance(v, (int, float, np.float64)) for v in vals):
-                avg_year_dict[k] = float(np.mean(vals))
-                min_year_dict[k] = float(np.min(vals))
-                max_year_dict[k] = float(np.max(vals))
-            else:
-                # Non-numeric values: just take from the first simulation as a reference
-                avg_year_dict[k] = yearly_values_list[0][k]
-                min_year_dict[k] = yearly_values_list[0][k]
-                max_year_dict[k] = yearly_values_list[0][k]
+            for k in keys:
+                vals = [d[k] for d in yearly_values_list]
+                if all(isinstance(v, (int, float, np.float64)) for v in vals):
+                    avg_year_dict[k] = float(np.mean(vals))
+                    min_year_dict[k] = float(np.min(vals))
+                    max_year_dict[k] = float(np.max(vals))
+                else:
+                    avg_year_dict[k] = yearly_values_list[0][k]
+                    min_year_dict[k] = yearly_values_list[0][k]
+                    max_year_dict[k] = yearly_values_list[0][k]
 
-        avg_stats.append(avg_year_dict)
-        min_stats.append(min_year_dict)
-        max_stats.append(max_year_dict)
+            avg_stats.append(avg_year_dict)
+            min_stats.append(min_year_dict)
+            max_stats.append(max_year_dict)
 
-    # For population_data, you might return just the first simulation's data
-    avg_population_data = all_population_data[0]
+        avg_population_data = all_population_data[0]
 
-    return (
-        avg_stats,
-        min_stats,
-        max_stats,
-        avg_max_count,
-        avg_max_hist_count,
-        avg_children_per_female_natives,
-        avg_children_per_female_immigrants,
-        avg_children_per_female_mixed,
-        avg_population_data,
-        avg_simulation_batch
-    )
+        results_by_immigration[nm_val] = {
+            "avg_stats": avg_stats,
+            "min_stats": min_stats,
+            "max_stats": max_stats,
+            "avg_max_count": avg_max_count,
+            "avg_max_hist_count": avg_max_hist_count,
+            "avg_children_per_female_natives": avg_children_per_female_natives,
+            "avg_children_per_female_immigrants": avg_children_per_female_immigrants,
+            "avg_children_per_female_mixed": avg_children_per_female_mixed,
+            "avg_population_data": avg_population_data,
+            "avg_simulation_batch": avg_simulation_batch
+        }
+
+    return results_by_immigration
