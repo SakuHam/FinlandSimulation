@@ -9,6 +9,8 @@ import sim1  # Importing the simulation module
 # Run Monte Carlo simulations
 (
     stats,
+    min_stats,
+    max_stats,
     max_count,
     max_hist_count,
     avg_children_per_female_natives,
@@ -17,6 +19,7 @@ import sim1  # Importing the simulation module
     population_data,
     simulation_batch
 ) = sim1.monte_carlo_simulations(10)
+
 
 # Now 'stats', 'avg_children_per_female_*', and other outputs are averages across the 10 runs.
 # The rest of the code remains the same, using these averaged values.
@@ -28,6 +31,9 @@ immigrant_1_population = [stat['immigrant_1_population'] * simulation_batch for 
 immigrant_2_population = [stat['immigrant_2_population'] * simulation_batch for stat in stats]
 mixed_population = [stat['mixed_population'] * simulation_batch for stat in stats]
 immigrant_percentage = [stat['immigrant_percentage'] for stat in stats]  # percentages can be averaged directly
+total_population = [stat['total_population'] * simulation_batch for stat in stats]
+min_total_population = [stat['total_population'] * simulation_batch for stat in min_stats]
+max_total_population = [stat['total_population'] * simulation_batch for stat in max_stats]
 
 # Dash app initialization
 app = dash.Dash(__name__)
@@ -84,24 +90,45 @@ app.layout = html.Div([
     ], style={"width": "48%", "display": "inline-block"})
 ])
 
-# Callback for total population trend graph
 @app.callback(
     Output("population-trend", "figure"),
     Input("population-trend", "hoverData")
 )
 def create_population_trend(_):
-    # Total population trend
     fig = go.Figure()
+
+    # Average line
     fig.add_trace(go.Scatter(
         x=years,
         y=total_population,
         mode="lines+markers",
-        name="Total Population",
+        name="Total Population (Avg)",
         line=dict(color="green", width=3)
     ))
 
+    # Min line (invisible)
+    fig.add_trace(go.Scatter(
+        x=years,
+        y=min_total_population,
+        mode="lines",
+        line=dict(color="green", width=0),
+        name="Min Population",
+        showlegend=False
+    ))
+
+    # Max line with fill area to min
+    fig.add_trace(go.Scatter(
+        x=years,
+        y=max_total_population,
+        mode="lines",
+        fill='tonexty',  # fill area between this trace and previous trace
+        line=dict(color="green", width=0),
+        name="Max Population",
+        showlegend=False
+    ))
+
     fig.update_layout(
-        title="Total Population Over Time",
+        title="Total Population Over Time (with Min/Max)",
         xaxis=dict(title="Year"),
         yaxis=dict(title="Total Population"),
         hovermode="x unified"

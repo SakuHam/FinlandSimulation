@@ -511,10 +511,9 @@ def monte_carlo_simulations(num_simulations):
         for _ in range(num_simulations)
     )
 
-    # `results` is a list of tuples from run_large_simulation(), e.g.:
-    # [(stats, max_count, max_hist_count, avg_native, avg_immigrant, avg_mixed, population_data, simulation_batch), ...]
+    # `results` is a list of tuples: 
+    # (stats, max_count, max_hist_count, avg_native, avg_immigrant, avg_mixed, population_data, simulation_batch)
 
-    # Unpack all results by category
     all_stats = [r[0] for r in results]
     all_max_count = [r[1] for r in results]
     all_max_hist_count = [r[2] for r in results]
@@ -529,40 +528,55 @@ def monte_carlo_simulations(num_simulations):
     avg_max_hist_count = np.mean(all_max_hist_count)
     avg_simulation_batch = int(np.mean(all_simulation_batch))
 
-    # The fertility arrays (avg_children_per_female_...) are lists of yearly values per simulation.
-    # We can average them element-wise:
+    # Average yearly fertility arrays
     avg_children_per_female_natives = np.mean(all_avg_natives, axis=0).tolist()
     avg_children_per_female_immigrants = np.mean(all_avg_immigrants, axis=0).tolist()
     avg_children_per_female_mixed = np.mean(all_avg_mixed, axis=0).tolist()
 
-    # `stats` is a list of yearly dicts for each simulation. We need to average each numeric key across simulations.
-    # Assume all simulations have the same length of stats and same keys.
+    # Each element of all_stats is a list of yearly dicts with keys like 
+    # "total_population", "native_population", etc.
     num_years = len(all_stats[0])
     keys = all_stats[0][0].keys()
+
     avg_stats = []
+    min_stats = []
+    max_stats = []
+
     for y in range(num_years):
-        # Extract the y-th year's dict from each simulation
-        yearly_values = [sim[y] for sim in all_stats]
+        # Extract year y data from each simulation
+        yearly_values_list = [sim[y] for sim in all_stats]
 
-        # Average each numeric key
+        # Prepare dicts for this year
         avg_year_dict = {}
-        for k in keys:
-            vals = [d[k] for d in yearly_values]
-            if all(isinstance(v, (int, float)) for v in vals):
-                avg_year_dict[k] = float(np.mean(vals))
-            else:
-                # If there's non-numeric data, handle accordingly or skip
-                avg_year_dict[k] = yearly_values[0][k]
-        avg_stats.append(avg_year_dict)
+        min_year_dict = {}
+        max_year_dict = {}
 
-    # For population_data, which is large and complex, you may choose to:
-    # - Just return one of them,
-    # - Or implement averaging if it makes sense.
-    # Here, we return the first one's population_data for demonstration.
+        for k in keys:
+            # Extract the list of values for key k across all simulations
+            vals = [d[k] for d in yearly_values_list]
+
+            # Check if values are numeric
+            if all(isinstance(v, (int, float, np.float64)) for v in vals):
+                avg_year_dict[k] = float(np.mean(vals))
+                min_year_dict[k] = float(np.min(vals))
+                max_year_dict[k] = float(np.max(vals))
+            else:
+                # Non-numeric values: just take from the first simulation as a reference
+                avg_year_dict[k] = yearly_values_list[0][k]
+                min_year_dict[k] = yearly_values_list[0][k]
+                max_year_dict[k] = yearly_values_list[0][k]
+
+        avg_stats.append(avg_year_dict)
+        min_stats.append(min_year_dict)
+        max_stats.append(max_year_dict)
+
+    # For population_data, you might return just the first simulation's data
     avg_population_data = all_population_data[0]
 
     return (
         avg_stats,
+        min_stats,
+        max_stats,
         avg_max_count,
         avg_max_hist_count,
         avg_children_per_female_natives,
