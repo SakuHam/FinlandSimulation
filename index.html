@@ -38,8 +38,12 @@
     </div>
 
     <!-- Additional charts -->
-    <div class="chart" id="fertility-chart" style="height:400px;"></div>
-    <div class="chart" id="age-sex-pyramid" style="height:400px;"></div>
+    <div class="charts-row">
+        <div class="chart" id="fertility-chart" style="height:400px;"></div>
+        <div class="chart" id="age-sex-pyramid" style="height:400px;"></div>
+    </div>
+
+    <!-- Immigrant Gene Histogram -->
     <div class="chart" id="immigrant-gene-histogram" style="height:400px;"></div>
 
     <script>
@@ -83,7 +87,12 @@
             { x: data.years, y: data.maxTotalPopulation, mode: 'lines', fill: 'tonexty', fillcolor: 'rgba(0,128,0,0.2)', line: { width: 0, color: 'green' }, showlegend: false },
             { x: data.years, y: data.totalPopulation, mode: 'lines+markers', name: 'Avg Total Population', line: { color: 'green', width: 2 } }
         ];
-        Plotly.newPlot('population-trend', totalPopTraces, { title: 'Total Population Over Time', xaxis: { title: 'Year' }, yaxis: { title: 'Population' } });
+        Plotly.newPlot('population-trend', totalPopTraces, { 
+            title: 'Total Population Over Time', 
+            xaxis: { title: 'Year' }, 
+            yaxis: { title: 'Population' },
+            hovermode: 'closest'
+        });
 
         // Population Breakdown
         Plotly.newPlot('population-breakdown', [
@@ -91,12 +100,25 @@
             { x: data.years, y: data.immigrant1Population, mode: 'lines', name: 'Immigrant 1', line: { color: 'red' } },
             { x: data.years, y: data.immigrant2Population, mode: 'lines', name: 'Immigrant 2', line: { color: 'orange' } },
             { x: data.years, y: data.mixedPopulation, mode: 'lines', name: 'Mixed', line: { color: 'purple' } }
-        ], { title: 'Population Breakdown Over Time', xaxis: { title: 'Year' }, yaxis: { title: 'Population' } });
+        ], { 
+            title: 'Population Breakdown Over Time', 
+            xaxis: { title: 'Year' }, 
+            yaxis: { title: 'Population' },
+            hovermode: 'closest'
+        });
 
         // Immigrant Percentage Over Time
-        Plotly.newPlot('immigrant-percentage', [{ x: data.years, y: data.immigrantPercentage, mode: 'lines', name: 'Immigrant %', line: { color: 'orange' } }], {
+        Plotly.newPlot('immigrant-percentage', [{
+            x: data.years, 
+            y: data.immigrantPercentage, 
+            mode: 'lines', 
+            name: 'Immigrant %', 
+            line: { color: 'orange' } 
+        }], {
             title: 'Immigrant Percentage Over Time',
-            xaxis: { title: 'Year' }, yaxis: { title: 'Percentage (%)' }
+            xaxis: { title: 'Year' }, 
+            yaxis: { title: 'Percentage (%)' },
+            hovermode: 'closest'
         });
 
         // Fertility Chart
@@ -104,16 +126,30 @@
             { x: data.years, y: data.avgChildrenPerFemaleNatives, mode: 'lines', name: 'Native Females', line: { color: 'blue' } },
             { x: data.years, y: data.avgChildrenPerFemaleImmigrants, mode: 'lines', name: 'Immigrant Females', line: { color: 'red' } },
             { x: data.years, y: data.avgChildrenPerFemaleMixed, mode: 'lines', name: 'Mixed Females', line: { color: 'purple' } }
-        ], { title: 'Average Children per Female', xaxis: { title: 'Year' }, yaxis: { title: 'Avg Children' } });
+        ], { 
+            title: 'Average Children per Female', 
+            xaxis: { title: 'Year' }, 
+            yaxis: { title: 'Avg Children' },
+            hovermode: 'closest'
+        });
 
         // Initial Pyramid and Histogram
         updatePyramidAndHistogram(0, data);
+        updateImmigrantGeneHistogram(0, data); // Initialize the gene histogram
 
-        // Update Pyramid on Hover
+        // Update Pyramid and Gene Histogram on Hover
         document.getElementById('population-trend').on('plotly_hover', function(event) {
             if (event && event.points && event.points.length > 0) {
-                updatePyramidAndHistogram(event.points[0].x, data);
+                const hoveredYear = event.points[0].x;
+                updatePyramidAndHistogram(hoveredYear, data);
+                updateImmigrantGeneHistogram(hoveredYear, data);
             }
+        });
+
+        // Reset Pyramid and Gene Histogram on Unhover
+        document.getElementById('population-trend').on('plotly_unhover', function(event) {
+            updatePyramidAndHistogram(0, data);
+            updateImmigrantGeneHistogram(0, data);
         });
     }
 
@@ -121,12 +157,102 @@
         const pyramidData = data.pyramidData[year];
         if (pyramidData) {
             const ageSexData = [
-                { y: pyramidData.ageGroups, x: pyramidData.nativeMaleCounts, type: 'bar', name: 'Native Males', orientation: 'h', marker: { color: 'blue' } },
-                { y: pyramidData.ageGroups, x: pyramidData.immigrantMaleCounts, type: 'bar', name: 'Immigrant Males', orientation: 'h', marker: { color: 'lightblue' } },
-                { y: pyramidData.ageGroups, x: pyramidData.nativeFemaleCounts, type: 'bar', name: 'Native Females', orientation: 'h', marker: { color: 'red' } },
-                { y: pyramidData.ageGroups, x: pyramidData.immigrantFemaleCounts, type: 'bar', name: 'Immigrant Females', orientation: 'h', marker: { color: 'pink' } }
+                { 
+                    y: pyramidData.ageGroups, 
+                    x: pyramidData.nativeMaleCounts, 
+                    type: 'bar', 
+                    name: 'Native Males', 
+                    orientation: 'h', 
+                    marker: { color: 'blue' },
+                    legendgroup: 'Males'
+                },
+                { 
+                    y: pyramidData.ageGroups, 
+                    x: pyramidData.immigrantMaleCounts, 
+                    type: 'bar', 
+                    name: 'Immigrant Males', 
+                    orientation: 'h', 
+                    marker: { color: 'lightblue' },
+                    legendgroup: 'Males'
+                },
+                { 
+                    y: pyramidData.ageGroups, 
+                    x: pyramidData.nativeFemaleCounts, 
+                    type: 'bar', 
+                    name: 'Native Females', 
+                    orientation: 'h', 
+                    marker: { color: 'red' },
+                    legendgroup: 'Females'
+                },
+                { 
+                    y: pyramidData.ageGroups, 
+                    x: pyramidData.immigrantFemaleCounts, 
+                    type: 'bar', 
+                    name: 'Immigrant Females', 
+                    orientation: 'h', 
+                    marker: { color: 'pink' },
+                    legendgroup: 'Females'
+                }
             ];
-            Plotly.react('age-sex-pyramid', ageSexData, { title: `Age-Sex Pyramid (Year ${year})`, barmode: 'relative', xaxis: { title: 'Population' }, yaxis: { autorange: 'reversed' } });
+            Plotly.react('age-sex-pyramid', ageSexData, { 
+                title: `Age-Sex Pyramid (Year ${year})`, 
+                barmode: 'relative', 
+                xaxis: { title: 'Population' }, 
+                yaxis: { autorange: 'reversed' },
+                hovermode: 'closest'
+            });
+        }
+    }
+
+    function updateImmigrantGeneHistogram(year, data) {
+        const geneData = data.geneHistogramData[year];
+        if (geneData) {
+            const bins = [0,10,20,30,40,50,60,70,80,90,100];
+            const binCenters = bins.slice(0, -1).map((b, i) => b + 5); // 5,15,...,95
+
+            // Calculate histograms for each gene type
+            const nativeHist = geneData.nativeGeneCounts;
+            const immigrant1Hist = geneData.immigrant1GeneCounts;
+            const immigrant2Hist = geneData.immigrant2GeneCounts;
+
+            const geneHistTraces = [
+                {
+                    x: binCenters,
+                    y: nativeHist,
+                    type: 'bar',
+                    name: 'Native',
+                    marker: { color: 'blue', opacity: 0.8 }
+                },
+                {
+                    x: binCenters,
+                    y: immigrant1Hist,
+                    type: 'bar',
+                    name: 'Immigrant 1',
+                    marker: { color: 'red', opacity: 0.8 }
+                },
+                {
+                    x: binCenters,
+                    y: immigrant2Hist,
+                    type: 'bar',
+                    name: 'Immigrant 2',
+                    marker: { color: 'orange', opacity: 0.8 }
+                }
+            ];
+
+            Plotly.react('immigrant-gene-histogram', geneHistTraces, { 
+                title: `Immigrant Gene Value Distribution (Year ${year})`, 
+                xaxis: { 
+                    title: 'Gene Percentage (%)', 
+                    tickvals: binCenters,
+                    ticktext: bins.slice(0, -1).map((b, i) => `${b}-${bins[i+1]}%`),
+                    range: [0, 100]
+                }, 
+                yaxis: { 
+                    title: 'Number of Individuals' 
+                }, 
+                barmode: 'group',
+                hovermode: 'closest'
+            });
         }
     }
     </script>

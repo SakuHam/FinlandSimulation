@@ -507,7 +507,7 @@ def monte_carlo_simulations(num_simulations, net_migration_values=[56000, 40000,
     for nm_val in net_migration_values:
         nm_per_batch = int(nm_val / simulation_batch)
 
-        results = Parallel(n_jobs=6)(
+        results = Parallel(n_jobs=10)(
             delayed(run_large_simulation)(nm_per_batch)
             for _ in range(num_simulations)
         )

@@ -58,27 +58,28 @@ for scenario_key in results_by_immigration.keys():
             "immigrantFemaleCounts": [count * simulation_batch for count in pyramid[4]]
         }
 
-    # Prepare gene histogram data
-    bins = np.arange(0, 101, 10)
     geneHistogramData = {}
-    for year in range(100):
-        if year not in population_data:
-            break
-        gene_values = population_data[year]["gene_values"]
-        native_counts = [0]*11
-        imm_1_counts = [0]*11
-        imm_2_counts = [0]*11
+    for year in range(min(100, len(population_data))):
+        gene_values = population_data[year].get("gene_values", [])
+        native_counts = [0] * 11
+        imm_1_counts = [0] * 11
+        imm_2_counts = [0] * 11
         for gv in gene_values:
-            n_bin = int(gv.get("native", 0) / 10)
-            i1_bin = int(gv.get("immigrant_1", 0) / 10)
-            i2_bin = int(gv.get("immigrant_2", 0) / 10)
+            n_gene = gv.get("native", 0)
+            i1_gene = gv.get("immigrant_1", 0)
+            i2_gene = gv.get("immigrant_2", 0)
+
+            # Determine the bin index for each gene value
+            n_bin = min(int(n_gene / 10.0), 9)
+            i1_bin = min(int(i1_gene / 10.0), 9)
+            i2_bin = min(int(i2_gene / 10.0), 9)
 
             native_counts[n_bin] += simulation_batch
             imm_1_counts[i1_bin] += simulation_batch
             imm_2_counts[i2_bin] += simulation_batch
 
         geneHistogramData[year] = {
-            "bins": bins.tolist(),
+            "bins": list(range(0, 101, 10)),
             "nativeGeneCounts": native_counts,
             "immigrant1GeneCounts": imm_1_counts,
             "immigrant2GeneCounts": imm_2_counts
@@ -96,7 +97,7 @@ for scenario_key in results_by_immigration.keys():
         "mixedPopulation": mixed_population,
         "immigrantPercentage": immigrant_percentage,
         "pyramidData": pyramid_data_converted,
-        "geneHistogramData": geneHistogramData,
+        "geneHistogramData": geneHistogramData, 
         "avgChildrenPerFemaleNatives": avg_children_per_female_natives,
         "avgChildrenPerFemaleImmigrants": avg_children_per_female_immigrants,
         "avgChildrenPerFemaleMixed": avg_children_per_female_mixed
