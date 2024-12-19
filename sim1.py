@@ -221,28 +221,28 @@ class Individual:
     def get_dynamic_fertility_prob(self):
         if self.is_immigrant:
             if self.child_count < 1:
-                return 0.4
-            if self.child_count <= 2:
-                return 0.25
-            if self.child_count <= 3:
-                return 0.08
-            if self.child_count <= 4:
+                return 0.30 
+            elif self.child_count <= 2:
+                return 0.10
+            elif self.child_count <= 3:
+                return 0.05
+            elif self.child_count <= 4:
                 return 0.02
-            if self.child_count <= 5:
+            elif self.child_count <= 5:
                 return 0.005
             else:
                 return 0.0
         else:
             if self.child_count < 1:
-                return 0.3
-            if self.child_count <= 2:
-                return 0.12
-            if self.child_count <= 3:
-                return 0.02
-            if self.child_count <= 4:
+                return 0.07 
+            elif self.child_count <= 2:
+                return 0.05
+            elif self.child_count <= 3:
+                return 0.03
+            elif self.child_count <= 4:
+                return 0.01
+            elif self.child_count <= 5:
                 return 0.005
-            if self.child_count <= 5:
-                return 0.002
             else:
                 return 0.0
 
@@ -276,6 +276,7 @@ class Population:
     def __init__(self, total_population, immigrant_ratio, native_fertility, immigrant_fertility, max_age=100):
         self.population = []
         self.next_id = 1
+        self.total_births_this_year = 0
 
         # Lists to store deceased females' child counts and immigration status
         self.deceased_females_natives = []
@@ -317,9 +318,11 @@ class Population:
             ))
             self.next_id += 1
 
-    def simulate_year(self, net_migration, max_age=100):
-        """Simulate a year of aging, reproduction, and death."""
+    def simulate_year(self, net_migration, max_age=100, birth_limit=43383):
+        """Simulate a year of aging, reproduction, and death with a birth limit."""
         new_population = []
+        potential_offspring = []  # List to store all potential births
+        birth_limit = int(birth_limit/simulation_batch)
 
         # Age individuals and remove those who die
         for individual in self.population:
@@ -327,7 +330,7 @@ class Population:
             if alive:
                 new_population.append(individual)
             else:
-                # If the individual is female, store her child count based on immigrant/native status
+                # Handle deceased individuals
                 if individual.sex == 'female':
                     if individual.get_gene_value('native') == 1.0:
                         self.deceased_females_natives.append(individual.child_count)
@@ -354,19 +357,29 @@ class Population:
         for i in range(min_len):
             male = partnerable_males[i]
             female = partnerable_females[i]
-            if abs(male.age - female.age) <= 5:
-                male.partner = female
-                female.partner = male
+            male.partner = female
+            female.partner = male
 
         # Simulate having offspring
-        offspring_list = []
         for individual in new_population:
             offspring = individual.have_offspring(self.next_id)
             if offspring:
-                offspring_list.append(offspring)
+                potential_offspring.append(offspring)
                 self.next_id += 1
 
-        new_population.extend(offspring_list)
+        # Enforce birth limit
+        total_potential_births = len(potential_offspring)
+        if total_potential_births > birth_limit:
+            # Randomly select 50,000 births from potential_offspring
+            selected_offspring = random.sample(potential_offspring, birth_limit)
+        else:
+            selected_offspring = potential_offspring
+
+        # Update birth count
+        self.total_births_this_year = len(selected_offspring)
+
+        # Add selected offspring to the population
+        new_population.extend(selected_offspring)
 
         # Add net migration
         for _ in range(int(net_migration)):

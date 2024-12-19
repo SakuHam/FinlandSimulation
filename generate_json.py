@@ -12,7 +12,7 @@ def convert_numpy(o):
     return o
 
 # Run simulations and get a dictionary keyed by net_migration scenario
-results_by_immigration = sim1.monte_carlo_simulations(10)
+results_by_immigration = sim1.monte_carlo_simulations(10, net_migration_values=[40000, 25000, 0])
 
 # Loop over all scenarios and process them
 all_data = {}

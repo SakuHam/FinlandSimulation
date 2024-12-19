@@ -197,8 +197,13 @@
             Plotly.react('age-sex-pyramid', ageSexData, { 
                 title: `Age-Sex Pyramid (Year ${year})`, 
                 barmode: 'relative', 
-                xaxis: { title: 'Population' }, 
-                yaxis: { autorange: 'reversed' },
+                xaxis: { 
+                    title: 'Population',
+                    range: [-300000, 300000]  // Set x-axis range here
+                }, 
+                yaxis: { 
+                    autorange: 'reversed' 
+                },
                 hovermode: 'closest'
             });
         }
@@ -248,7 +253,8 @@
                     range: [0, 100]
                 }, 
                 yaxis: { 
-                    title: 'Number of Individuals' 
+                    title: 'Number of Individuals',
+                    range: [0, 6000000]  // Set y-axis range here
                 }, 
                 barmode: 'group',
                 hovermode: 'closest'
