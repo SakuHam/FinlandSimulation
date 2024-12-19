@@ -24,7 +24,7 @@ KEY_TO_STRING = {
 
 # Simulation parameters
 years = 100
-simulation_batch = 1000
+simulation_batch = 100
 net_migration = int(56000 / simulation_batch)
 total_population = int(5600000 / simulation_batch)
 immigrant_ratio = 0.062
@@ -194,7 +194,7 @@ class Individual:
     @property
     def is_immigrant(self):
         # Consider an individual an immigrant if 'native' gene is less than 0.5
-        return self.get_gene_value('native') < 0.5
+        return self.get_gene_value('native') < 0.75
 
     @property
     def immigrant_type(self):
